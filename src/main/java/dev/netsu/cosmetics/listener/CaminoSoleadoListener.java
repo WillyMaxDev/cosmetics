@@ -27,12 +27,10 @@ public class CaminoSoleadoListener implements Listener {
     private final Map<Location, BlockData> originalBlock = new HashMap<>();
     private final Map<Location, BlockData> originalAbove = new HashMap<>();
     private final Map<Location, BlockData> originalAbove2 = new HashMap<>();
-    // Bloques que NO deben expirar (jugador quieto encima)
-    private final Set<Location> frozenBlocks = new HashSet<>();
+    private final Map<Location, Long> blockTimestamps = new HashMap<>();
     private final Set<Location> playerPlaced = new HashSet<>();
     private final Map<UUID, Long> lastMoved = new HashMap<>();
     private final Map<UUID, BukkitRunnable> spiralTasks = new HashMap<>();
-    // Intensidad de partículas por jugador (0.0 - 1.0)
     private final Map<UUID, Double> particleIntensity = new HashMap<>();
 
     private static final Set<Material> BLOQUEADOS = new HashSet<>(Arrays.asList(
@@ -51,103 +49,27 @@ public class CaminoSoleadoListener implements Listener {
     public CaminoSoleadoListener(NetsuCosmetics plugin) {
         this.plugin = plugin;
         startRestoreTask();
-        startIntensityTask();
     }
 
     private void startRestoreTask() {
         new BukkitRunnable() {
             @Override
             public void run() {
-                Iterator<Map.Entry<Location, BlockData>> it = originalBlock.entrySet().iterator();
-                while (it.hasNext()) {
-                    Location loc = it.next().getKey();
-                    if (!frozenBlocks.contains(loc)) {
-                        restoreBlock(loc);
-                        it.remove();
+                long now = System.currentTimeMillis();
+                List<Location> toRemove = new ArrayList<>();
+                
+                for (Map.Entry<Location, Long> entry : blockTimestamps.entrySet()) {
+                    if (now - entry.getValue() >= 3000L) {
+                        toRemove.add(entry.getKey());
                     }
                 }
-                frozenBlocks.clear();
+                
+                for (Location loc : toRemove) {
+                    restoreBlock(loc);
+                    blockTimestamps.remove(loc);
+                }
             }
         }.runTaskTimer(plugin, 20L, 20L);
-    }
-
-    // Tarea que actualiza la intensidad de partículas gradualmente
-    private void startIntensityTask() {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                CosmeticData data = getCaminoSoleadoData();
-                if (data == null) return;
-                long now = System.currentTimeMillis();
-
-                for (Player player : plugin.getServer().getOnlinePlayers()) {
-                    if (!bootsHaveCosmetico(player.getInventory().getBoots(), data)) continue;
-
-                    long lastMove = lastMoved.getOrDefault(player.getUniqueId(), now);
-                    long quietoMs = now - lastMove;
-                    double intensity = particleIntensity.getOrDefault(player.getUniqueId(), 0.0);
-
-                    if (quietoMs >= 2000L) {
-                        // Rampa up: de 0 a 1 entre 2s y 5s
-                        double target = Math.min(1.0, (quietoMs - 2000.0) / 3000.0);
-                        intensity = Math.min(target, intensity + 0.05);
-                    } else {
-                        // Rampa down: bajar gradualmente al moverse
-                        intensity = Math.max(0.0, intensity - 0.08);
-                    }
-                    particleIntensity.put(player.getUniqueId(), intensity);
-
-                    // Emitir partículas idle según intensidad
-                    if (intensity > 0.05) {
-                        spawnIdleParticles(player, data, intensity);
-                    }
-
-                    // Espiral a los 5s
-                    if (quietoMs >= 5000L && !spiralTasks.containsKey(player.getUniqueId())) {
-                        startSpiral(player);
-                    }
-                }
-            }
-        }.runTaskTimer(plugin, 1L, 1L);
-    }
-
-    private void spawnIdleParticles(Player player, CosmeticData data, double intensity) {
-        ConfigurationSection cfg = data.configSection;
-        if (cfg == null) return;
-
-        List<Material> bloques = new ArrayList<>();
-        for (String s : cfg.getStringList("bloques")) {
-            Material m = Material.matchMaterial(s);
-            if (m != null) bloques.add(m);
-        }
-        if (bloques.isEmpty()) bloques.add(Material.SAND);
-
-        Particle particula = null;
-        try { particula = Particle.valueOf(cfg.getString("particulas.tipo", "BLOCK")); } catch (Exception ignored) {}
-        if (particula == null) return;
-
-        Random random = new Random();
-        // Número de partículas proporcional a la intensidad (máx 6)
-        int count = (int) Math.ceil(intensity * 6);
-        Location center = player.getLocation().getBlock().getLocation();
-
-        for (int i = 0; i < count; i++) {
-            int dx = random.nextInt(3) - 1;
-            int dz = random.nextInt(3) - 1;
-            Location loc = center.clone().add(dx, 0, dz);
-            if (!originalBlock.containsKey(loc.clone().add(0, -1, 0))) continue;
-
-            Material mat = bloques.get(random.nextInt(bloques.size()));
-            BlockData bd = Bukkit.createBlockData(mat);
-            Location spawnLoc = loc.clone().add(0.5 + (random.nextDouble() - 0.5) * 0.4, 1.0, 0.5 + (random.nextDouble() - 0.5) * 0.4);
-            try {
-                if (particula == Particle.BLOCK || particula == Particle.FALLING_DUST) {
-                    player.getWorld().spawnParticle(particula, spawnLoc, 1, 0.1, 0.05, 0.1, 0, bd);
-                } else {
-                    player.getWorld().spawnParticle(particula, spawnLoc, 1, 0.1, 0.05, 0.1);
-                }
-            } catch (Exception ignored) {}
-        }
     }
 
     private void restoreBlock(Location loc) {
@@ -195,12 +117,11 @@ public class CaminoSoleadoListener implements Listener {
         long now = System.currentTimeMillis();
         Location center = player.getLocation().getBlock().getLocation();
 
-        // Restaurar forzado si cayó más de 3 bloques
         if (GroundLandListener.shouldForceRestore(player, plugin)) {
             List<Location> toRestore = new ArrayList<>(originalBlock.keySet());
             for (Location loc : toRestore) restoreBlock(loc);
             originalBlock.clear();
-            frozenBlocks.clear();
+            blockTimestamps.clear();
             cancelSpiral(player.getUniqueId());
             return;
         }
@@ -209,14 +130,6 @@ public class CaminoSoleadoListener implements Listener {
             lastMoved.put(player.getUniqueId(), now);
             cancelSpiral(player.getUniqueId());
             applyBlocks(player, data, now);
-        } else {
-            // Quieto: marcar bloques bajo los pies como congelados
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dz = -1; dz <= 1; dz++) {
-                    Location loc = center.clone().add(dx, -1, dz).getBlock().getLocation();
-                    if (originalBlock.containsKey(loc)) frozenBlocks.add(loc);
-                }
-            }
         }
     }
 
@@ -250,6 +163,7 @@ public class CaminoSoleadoListener implements Listener {
                 Material replacement = bloques.get(random.nextInt(bloques.size()));
                 BlockData newBd = Bukkit.createBlockData(replacement);
                 originalBlock.put(loc, under.getBlockData());
+                blockTimestamps.put(loc, now);
 
                 Block above1 = under.getRelative(0, 1, 0);
                 if (!above1.getType().isAir() && !above1.getType().isSolid()) {
