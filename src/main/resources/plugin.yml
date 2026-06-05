@@ -1,0 +1,13 @@
+name: NetsuCosmetics
+version: 0.1.8
+main: dev.netsu.cosmetics.NetsuCosmetics
+api-version: '1.21'
+description: Plugin de cosméticos para NetsuMC
+authors: [Netsu]
+softdepend: [WorldGuard]
+
+commands:
+  nc:
+    description: Comando principal de NetsuCosmetics
+    usage: /nc <sub>
+    permission: netsucosmetics.op

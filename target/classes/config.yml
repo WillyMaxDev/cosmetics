@@ -1,0 +1,85 @@
+prefix: "&#C70000&lLETAL &7»"
+
+cosmeticos:
+  camino_soleado:
+    id: "camino_soleado"
+    tipo: "CAMINO_SOLEADO"
+    usos: 1
+    cabeza:
+      skull_texture: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvN2RmMGZlZDMzNjFhMjZhYTJhNjZjZjY4YTY2NzZhNjZjZjY4YTY2NzZhNjZjZjY4YTY2NzZhNjZjZjY4YTY2NzYifX19"
+      nombre: "&#D2A41D&lC&#DAAF1F&lA&#E1B920&lM&#E9C422&lI&#F0CE23&lN&#F8D925&lO &#FFE326&lS&#F8D925&lO&#F0CE23&lL&#E9C422&lE&#E1B920&lA&#DAAF1F&lD&#D2A41D&lO"
+      lore:
+        - "&7Cosmetico de camino"
+        - "&eCamina sobre la arena dorada"
+        - ""
+        - "&7Usos: &e{usos}"
+      nombre_display: "Camino Soleado"
+    config:
+      bloques:
+        - "SAND"
+        - "SANDSTONE"
+        - "SMOOTH_SANDSTONE"
+        - "CUT_SANDSTONE"
+      particulas:
+        tipo: "BLOCK"
+        cantidad: 5
+    item_aplicable: "BOOTS"
+    lore_aplicado:
+      - "&r"
+      - "&#C70000¡Este item contiene {nombre}&#C70000!"
+      - "&r"
+
+  aura_veraniega:
+    id: "aura_veraniega"
+    tipo: "AURA_VERANIEGA"
+    usos: 1
+    cabeza:
+      skull_texture: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYWQ3OGZlZDliNDlhNjNiNTRlZjYxNDk3NzI3NzZiZTM4NjE4ZTM1YTZhMzE3YWJlNzEyMzQ1YWJjZGVmMTIzIn19fQ=="
+      nombre: "&#1A8FE3&lA&#2196F3&lU&#29A0F8&lR&#31ABFD&lA &#39B5FF&lV&#41BFFF&lE&#49C9FF&lR&#51D3FF&lA&#59DDFF&lN&#61E7FF&lI&#69F1FF&lE&#71FBFF&lG&#69F1FF&lA"
+      lore:
+        - "&7Cosmetico de pechera"
+        - "&bEmana el frescor del verano"
+        - ""
+        - "&7Usos: &b{usos}"
+      nombre_display: "Aura Veraniega"
+    config:
+      intervalo_ticks: 2
+      particulas:
+        gota:
+          tipo: "FALLING_WATER"
+          cantidad: 3
+        splash:
+          tipo: "SPLASH"
+          cantidad: 2
+        burbuja:
+          tipo: "BUBBLE_POP"
+          cantidad: 1
+      pulso_ticks: 40
+    item_aplicable: "CHESTPLATE"
+    lore_aplicado:
+      - "&r"
+      - "&#C70000¡Este item contiene {nombre}&#C70000!"
+      - "&r"
+
+  brisa_marina:
+    id: "brisa_marina"
+    tipo: "BRISA_MARINA"
+    usos: 1
+    cabeza:
+      skull_texture: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvMWI2ZjFhMWI4ZWQxMzE4NTU1ZTEzNDU2YWJjZGVmMTIzNDU2Nzg5MGFiY2RlZjEyMzQ1Njc4OTBhYmNkZWYifX19"
+      nombre: "&#0077B6&lB&#0096C8&lR&#00B4DA&lI&#00C8E8&lS&#00D4F0&lA &#00C8E8&lM&#00B4DA&lA&#0096C8&lR&#0077B6&lI&#005FA0&lN&#004A8A&lA"
+      lore:
+        - "&7Cosmetico de espada"
+        - "&bSiente la brisa del oceano"
+        - ""
+        - "&7Usos: &b{usos}"
+      nombre_display: "Brisa Marina"
+    config:
+      burbujas_idle:
+        cantidad: 2
+        intervalo_ticks: 3
+    item_aplicable: "SWORD"
+    lore_aplicado:
+      - "&r"
+      - "&#C70000¡Este item contiene {nombre}&#C70000!"
+      - "&r"
