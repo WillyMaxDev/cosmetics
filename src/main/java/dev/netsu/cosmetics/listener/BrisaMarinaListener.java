@@ -44,21 +44,24 @@ public class BrisaMarinaListener implements Listener {
     }
 
     private void spawnOlaAgua(Player player, Location center) {
-        // Sonido de impacto de agua
         player.getWorld().playSound(center, Sound.ENTITY_PLAYER_SPLASH, 0.7f, 1.2f);
         player.getWorld().playSound(center, Sound.BLOCK_WATER_AMBIENT, 0.4f, 1.5f);
 
         new BukkitRunnable() {
             double radio = 0.1;
             int frames = 0;
+            final double maxHeight = center.getY() + 8;
 
             @Override
             public void run() {
-                if (frames++ > 10) { cancel(); return; }
-                int puntos = 14;
+                if (frames++ > 12) { cancel(); return; }
+                int puntos = 16;
                 for (int i = 0; i < puntos; i++) {
                     double angle = Math.toRadians(i * (360.0 / puntos));
                     Location loc = center.clone().add(Math.cos(angle) * radio, 0, Math.sin(angle) * radio);
+                    
+                    if (loc.getY() >= maxHeight) continue;
+
                     try {
                         player.getWorld().spawnParticle(Particle.FALLING_WATER, loc, 1, 0, 0.04, 0, 0.008);
                         if (frames % 2 == 0) {
@@ -72,51 +75,61 @@ public class BrisaMarinaListener implements Listener {
     }
 
     private void spawnCriticoMarino(Player player, Location center) {
-        // Sonido de ola grande + burbuja al crítico
         player.getWorld().playSound(center, Sound.ENTITY_PLAYER_SPLASH_HIGH_SPEED, 0.8f, 0.9f);
         player.getWorld().playSound(center, Sound.BLOCK_BUBBLE_COLUMN_UPWARDS_AMBIENT, 0.6f, 1.3f);
         player.getWorld().playSound(center, Sound.ENTITY_GENERIC_SPLASH, 0.5f, 1.6f);
 
-        // Círculo expansivo rápido de burbujas azules
-        new BukkitRunnable() {
-            double radio = 0.05;
-            int frames = 0;
-
-            @Override
-            public void run() {
-                if (frames++ > 7) { cancel(); return; }
-                int puntos = 20;
-                for (int i = 0; i < puntos; i++) {
-                    double angle = Math.toRadians(i * (360.0 / puntos));
-                    Location loc = center.clone().add(Math.cos(angle) * radio, 0, Math.sin(angle) * radio);
-                    try {
-                        player.getWorld().spawnParticle(Particle.SCULK_CHARGE_POP, loc, 1, 0.01, 0.01, 0.01, 0);
-                    } catch (Exception ignored) {}
-                }
-                // Burbujas dispersas
-                for (int i = 0; i < 3; i++) {
-                    Location scatter = center.clone().add(
-                            (RNG.nextDouble() - 0.5) * radio * 2,
-                            RNG.nextDouble() * 0.4,
-                            (RNG.nextDouble() - 0.5) * radio * 2
-                    );
-                    try {
-                        player.getWorld().spawnParticle(Particle.BUBBLE_POP, scatter, 1, 0.02, 0.04, 0.02, 0.04);
-                    } catch (Exception ignored) {}
-                }
-                radio += 0.32;
-            }
-        }.runTaskTimer(plugin, 0L, 1L);
-
-        // Onda sónica del warden en el punto de impacto
         try {
             player.getWorld().spawnParticle(Particle.SONIC_BOOM, center, 1, 0, 0, 0, 0);
         } catch (Exception ignored) {}
 
-        // Gotas de agua saliendo del impacto
         try {
-            player.getWorld().spawnParticle(Particle.FALLING_WATER, center, 12, 0.3, 0.3, 0.3, 0.05);
+            player.getWorld().spawnParticle(Particle.FALLING_WATER, center, 20, 0.4, 0.4, 0.4, 0.08);
         } catch (Exception ignored) {}
+
+        new BukkitRunnable() {
+            double radio = 0.1;
+            int frames = 0;
+            final double maxHeight = center.getY() + 10;
+
+            @Override
+            public void run() {
+                if (frames++ > 14) { cancel(); return; }
+                int puntos = 18;
+                
+                for (int i = 0; i < puntos; i++) {
+                    double angle = Math.toRadians(i * (360.0 / puntos));
+                    Location loc = center.clone().add(Math.cos(angle) * radio, 0, Math.sin(angle) * radio);
+                    
+                    if (loc.getY() >= maxHeight) continue;
+
+                    try {
+                        player.getWorld().spawnParticle(Particle.FALLING_WATER, loc, 1, 0, 0.04, 0, 0.01);
+                        if (frames % 2 == 0) {
+                            player.getWorld().spawnParticle(Particle.SPLASH, loc, 1, 0.05, 0, 0.05, 0.02);
+                        }
+                    } catch (Exception ignored) {}
+                }
+                
+                if (frames > 10) {
+                    for (int i = 0; i < 6; i++) {
+                        Location scatter = center.clone().add(
+                                (RNG.nextDouble() - 0.5) * radio * 1.5,
+                                RNG.nextDouble() * 0.3,
+                                (RNG.nextDouble() - 0.5) * radio * 1.5
+                        );
+                        
+                        if (scatter.getY() >= maxHeight) continue;
+
+                        try {
+                            player.getWorld().spawnParticle(Particle.BUBBLE_POP, scatter, 1, 0.03, 0.05, 0.03, 0.05);
+                        } catch (Exception ignored) {}
+                    }
+                }
+                
+                radio += 0.18;
+            }
+        }.runTaskTimer(plugin, 0L, 1L);
     }
 
     private boolean isCritical(Player player) {
