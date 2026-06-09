@@ -210,7 +210,10 @@ public class CaminoSoleadoListener implements Listener {
                 for (int i = 0; i < 3; i++) {
                     double a = angle + Math.toRadians(i * 120);
                     Location loc = base.clone().add(Math.cos(a) * 0.6, height, Math.sin(a) * 0.6);
-                    try { player.getWorld().spawnParticle(Particle.BLOCK, loc, 1, 0, 0, 0, 0, sandData); } catch (Exception ignored) {}
+                    
+                    if (!isBlockColliding(loc)) {
+                        try { player.getWorld().spawnParticle(Particle.BLOCK, loc, 1, 0, 0, 0, 0, sandData); } catch (Exception ignored) {}
+                    }
                 }
                 angle += Math.toRadians(18);
                 height = goingDown ? height - 0.08 : height + 0.08;
@@ -233,6 +236,11 @@ public class CaminoSoleadoListener implements Listener {
         String name = mat.name();
         if (name.contains("PORTAL") || name.contains("GATEWAY")) return false;
         return mat.isSolid();
+    }
+
+    private boolean isBlockColliding(Location loc) {
+        Block block = loc.getBlock();
+        return block.getType().isSolid();
     }
 
     private boolean bootsHaveCosmetico(ItemStack boots, CosmeticData data) {
