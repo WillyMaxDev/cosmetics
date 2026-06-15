@@ -3,6 +3,7 @@ package dev.netsu.cosmetics.listener;
 import dev.netsu.cosmetics.NetsuCosmetics;
 import dev.netsu.cosmetics.cosmetic.CosmeticData;
 import org.bukkit.*;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -60,7 +61,7 @@ public class BrisaMarinaListener implements Listener {
                     double angle = Math.toRadians(i * (360.0 / puntos));
                     Location loc = center.clone().add(Math.cos(angle) * radio, 0, Math.sin(angle) * radio);
                     
-                    if (loc.getY() >= maxHeight) continue;
+                    if (loc.getY() >= maxHeight || isBlockColliding(loc)) continue;
 
                     try {
                         player.getWorld().spawnParticle(Particle.FALLING_WATER, loc, 1, 0, 0.04, 0, 0.008);
@@ -80,10 +81,6 @@ public class BrisaMarinaListener implements Listener {
         player.getWorld().playSound(center, Sound.ENTITY_GENERIC_SPLASH, 0.5f, 1.6f);
 
         try {
-            player.getWorld().spawnParticle(Particle.SONIC_BOOM, center, 1, 0, 0, 0, 0);
-        } catch (Exception ignored) {}
-
-        try {
             player.getWorld().spawnParticle(Particle.FALLING_WATER, center, 20, 0.4, 0.4, 0.4, 0.08);
         } catch (Exception ignored) {}
 
@@ -94,14 +91,14 @@ public class BrisaMarinaListener implements Listener {
 
             @Override
             public void run() {
-                if (frames++ > 14) { cancel(); return; }
-                int puntos = 18;
+                if (frames++ > 16) { cancel(); return; }
+                int puntos = 20;
                 
                 for (int i = 0; i < puntos; i++) {
                     double angle = Math.toRadians(i * (360.0 / puntos));
                     Location loc = center.clone().add(Math.cos(angle) * radio, 0, Math.sin(angle) * radio);
                     
-                    if (loc.getY() >= maxHeight) continue;
+                    if (loc.getY() >= maxHeight || isBlockColliding(loc)) continue;
 
                     try {
                         player.getWorld().spawnParticle(Particle.FALLING_WATER, loc, 1, 0, 0.04, 0, 0.01);
@@ -111,25 +108,29 @@ public class BrisaMarinaListener implements Listener {
                     } catch (Exception ignored) {}
                 }
                 
-                if (frames > 10) {
-                    for (int i = 0; i < 6; i++) {
-                        Location scatter = center.clone().add(
-                                (RNG.nextDouble() - 0.5) * radio * 1.5,
-                                RNG.nextDouble() * 0.3,
-                                (RNG.nextDouble() - 0.5) * radio * 1.5
-                        );
-                        
-                        if (scatter.getY() >= maxHeight) continue;
+                for (int i = 0; i < 12; i++) {
+                    double angle = Math.toRadians(i * (360.0 / 12));
+                    Location scatter = center.clone().add(
+                            Math.cos(angle) * radio * 1.2,
+                            RNG.nextDouble() * 0.5,
+                            Math.sin(angle) * radio * 1.2
+                    );
+                    
+                    if (scatter.getY() >= maxHeight || isBlockColliding(scatter)) continue;
 
-                        try {
-                            player.getWorld().spawnParticle(Particle.BUBBLE_POP, scatter, 1, 0.03, 0.05, 0.03, 0.05);
-                        } catch (Exception ignored) {}
-                    }
+                    try {
+                        player.getWorld().spawnParticle(Particle.BUBBLE_POP, scatter, 1, 0.04, 0.06, 0.04, 0.06);
+                    } catch (Exception ignored) {}
                 }
                 
-                radio += 0.18;
+                radio += 0.2;
             }
         }.runTaskTimer(plugin, 0L, 1L);
+    }
+
+    private boolean isBlockColliding(Location loc) {
+        Block block = loc.getBlock();
+        return block.getType().isSolid();
     }
 
     private boolean isCritical(Player player) {
