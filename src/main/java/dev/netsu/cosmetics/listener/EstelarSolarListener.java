@@ -8,12 +8,15 @@ import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.*;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.util.Vector;
 
 import java.util.*;
 
@@ -22,16 +25,14 @@ public class EstelarSolarListener implements Listener {
     private final NetsuCosmetics plugin;
     private static final Random RNG = new Random();
 
-    // Proyectiles con el cosmetico activo
     private final Set<UUID> trackedArrows = new HashSet<>();
-    // Timestamp de la última vez que se emitió la partícula de cola (cada 3s)
     private final Map<UUID, Long> lastTailParticle = new HashMap<>();
 
-    // Restauración de bloques (igual que CaminoSoleado)
     private final Map<Location, BlockData> originalBlock = new HashMap<>();
     private final Map<Location, BlockData> originalAbove = new HashMap<>();
     private final Map<Location, BlockData> originalAbove2 = new HashMap<>();
     private final Map<Location, Long> blockTimestamps = new HashMap<>();
+    private final Set<Location> protectedBlocks = new HashSet<>();
 
     private static final Set<Material> BLOQUEADOS = new HashSet<>(Arrays.asList(
             Material.BEDROCK, Material.WATER, Material.LAVA,
@@ -46,7 +47,6 @@ public class EstelarSolarListener implements Listener {
             Material.PITCHER_PLANT, Material.TALL_SEAGRASS
     ));
 
-    // Bloques solares para el suelo (mismo estilo que CaminoSoleado)
     private static final List<Material> BLOQUES_SOLAR = Arrays.asList(
             Material.SAND,
             Material.SANDSTONE,
@@ -60,12 +60,9 @@ public class EstelarSolarListener implements Listener {
         startRestoreTask();
     }
 
-    // ─── LANZAMIENTO ───────────────────────────────────────────────────────────
-
     @EventHandler
     public void onProjectileLaunch(ProjectileLaunchEvent event) {
         Projectile proj = event.getEntity();
-        // Acepta Arrow y Spectral Arrow (multishot también son Arrow)
         if (!(proj instanceof Arrow)) return;
         if (!(proj.getShooter() instanceof Player player)) return;
 
@@ -75,8 +72,6 @@ public class EstelarSolarListener implements Listener {
         trackedArrows.add(proj.getUniqueId());
         lastTailParticle.put(proj.getUniqueId(), System.currentTimeMillis());
     }
-
-    // ─── IMPACTO ────────────────────────────────────────────────────────────────
 
     @EventHandler
     public void onProjectileHit(ProjectileHitEvent event) {
@@ -91,22 +86,26 @@ public class EstelarSolarListener implements Listener {
         Block hitBlock = event.getHitBlock();
 
         if (hitEntity instanceof LivingEntity living) {
-            Location center = living.getLocation().add(0, 0, 0);
-            applyBlocksAroundEntity(living, center);
-            spawnImpactParticles(proj.getWorld(), center.clone().add(0, living.getHeight() / 2.0, 0));
+            applyBlocksAroundEntity(living);
+            spawnImpactParticles(proj.getWorld(), living.getLocation().add(0, living.getHeight() / 2.0, 0));
         } else if (hitBlock != null) {
             spawnImpactParticles(proj.getWorld(), hitBlock.getLocation().add(0.5, 0.5, 0.5));
         }
     }
 
-    // ─── TAREA PRINCIPAL: espiral continua + partícula de cola cada 3s ─────────
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onBlockBreak(BlockBreakEvent event) {
+        Location loc = event.getBlock().getLocation();
+        if (protectedBlocks.contains(loc)) {
+            event.setCancelled(true);
+        }
+    }
 
     private void startSpiralAndTailTask() {
         new BukkitRunnable() {
             @Override
             public void run() {
                 if (trackedArrows.isEmpty()) return;
-
                 long now = System.currentTimeMillis();
 
                 for (World world : plugin.getServer().getWorlds()) {
@@ -115,17 +114,14 @@ public class EstelarSolarListener implements Listener {
                         UUID arrowId = arrow.getUniqueId();
                         if (!trackedArrows.contains(arrowId)) continue;
 
-                        // Si la flecha ya tocó algo (isDead/onGround) limpiamos
                         if (arrow.isDead() || arrow.isOnGround()) {
                             trackedArrows.remove(arrowId);
                             lastTailParticle.remove(arrowId);
                             continue;
                         }
 
-                        // Espiral de partículas alrededor del proyectil (continua)
                         spawnSpiralAroundArrow(arrow, now);
 
-                        // Partícula de cola cada 3 segundos (dura 3 segundos)
                         long lastTail = lastTailParticle.getOrDefault(arrowId, now);
                         if (now - lastTail >= 3000L) {
                             lastTailParticle.put(arrowId, now);
@@ -137,20 +133,16 @@ public class EstelarSolarListener implements Listener {
         }.runTaskTimer(plugin, 0L, 1L);
     }
 
-    /**
-     * Espiral de partículas END_ROD alrededor del proyectil, girando continuamente.
-     * El ángulo se basa en el tiempo actual para que sea fluido y no dependa de ticks.
-     */
     private void spawnSpiralAroundArrow(Arrow arrow, long now) {
         Location loc = arrow.getLocation();
-        // La dirección del movimiento de la flecha nos sirve para orientar la espiral
-        org.bukkit.util.Vector vel = arrow.getVelocity().clone().normalize();
+        Vector vel = arrow.getVelocity();
+        if (vel.lengthSquared() < 0.0001) return;
+        vel = vel.clone().normalize();
 
-        // Calculamos dos vectores perpendiculares al movimiento de la flecha
-        org.bukkit.util.Vector perp1 = getPerp1(vel);
-        org.bukkit.util.Vector perp2 = vel.clone().crossProduct(perp1).normalize();
+        Vector perp1 = getPerp1(vel);
+        Vector perp2 = vel.clone().crossProduct(perp1).normalize();
 
-        double rotation = (now / 40.0) % (2 * Math.PI); // velocidad de rotación suave
+        double rotation = (now / 40.0) % (2 * Math.PI);
         int points = 8;
         double radius = 0.25;
 
@@ -169,21 +161,13 @@ public class EstelarSolarListener implements Listener {
         }
     }
 
-    /**
-     * Burst de partícula dorada (FLAME / LAVA) en la cola de la flecha, que dura 3 segundos.
-     * Se genera al spawnearse y luego va desapareciendo sola (lifetime natural de la partícula).
-     */
     private void spawnTailBurst(Arrow arrow) {
         Location loc = arrow.getLocation();
-
-        // Burst inicial
         try {
             arrow.getWorld().spawnParticle(Particle.FLAME, loc, 6, 0.05, 0.05, 0.05, 0.01);
             arrow.getWorld().spawnParticle(Particle.END_ROD, loc, 3, 0.08, 0.08, 0.08, 0.005);
         } catch (Exception ignored) {}
 
-        // Las partículas de Minecraft duran ~40-60 ticks de forma natural;
-        // para que duren exactamente 3s mantenemos un rastro ligero durante 60 ticks
         new BukkitRunnable() {
             int ticks = 0;
             @Override
@@ -192,40 +176,40 @@ public class EstelarSolarListener implements Listener {
                     cancel();
                     return;
                 }
-                Location currentLoc = arrow.getLocation();
                 try {
-                    currentLoc.getWorld().spawnParticle(Particle.FLAME, currentLoc, 1, 0.03, 0.03, 0.03, 0.003);
+                    arrow.getLocation().getWorld().spawnParticle(Particle.FLAME, arrow.getLocation(), 1, 0.03, 0.03, 0.03, 0.003);
                 } catch (Exception ignored) {}
             }
         }.runTaskTimer(plugin, 0L, 1L);
     }
 
-    // ─── BLOQUES TEMPORALES AL IMPACTAR EN ENTIDAD ────────────────────────────
+    private void applyBlocksAroundEntity(LivingEntity entity) {
+        Location entityLoc = entity.getLocation();
+        double entityY = entityLoc.getY();
 
-    /**
-     * Cambia entre 4 y 6 bloques en un radio 3x3 alrededor del jugador impactado.
-     * El bloque bajo el jugador (centro) ES OBLIGATORIO.
-     * El resto se selecciona aleatoriamente hasta un total de 4-6.
-     */
-    private void applyBlocksAroundEntity(LivingEntity entity, Location groundLoc) {
-        // Bloque justo debajo del jugador
-        Location center = groundLoc.getBlock().getLocation().add(0, -1, 0);
+        Location surfaceCenter = findSurfaceBelow(entityLoc);
+        if (surfaceCenter == null) return;
+
+        double surfaceTopY = surfaceCenter.getY() + 1.0;
+        double heightAboveSurface = entityY - surfaceTopY;
+
+        if (heightAboveSurface > 2.0) return;
 
         long now = System.currentTimeMillis();
-        int totalTarget = 4 + RNG.nextInt(3); // 4, 5 o 6 bloques
+        int totalTarget = 6 + RNG.nextInt(5);
 
-        // Construimos la lista: primero el centro, luego los demás en orden aleatorio
         List<Location> candidates = new ArrayList<>();
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dz = -1; dz <= 1; dz++) {
-                if (dx == 0 && dz == 0) continue; // centro lo añadimos primero
-                candidates.add(center.clone().add(dx, 0, dz));
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dz = -2; dz <= 2; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                Location surfLoc = findSurfaceBelow(entityLoc.clone().add(dx, 0, dz));
+                if (surfLoc != null) candidates.add(surfLoc);
             }
         }
         Collections.shuffle(candidates, RNG);
 
         List<Location> toChange = new ArrayList<>();
-        toChange.add(center); // CENTRO OBLIGATORIO
+        toChange.add(surfaceCenter);
         int added = 1;
         for (Location cand : candidates) {
             if (added >= totalTarget) break;
@@ -235,7 +219,7 @@ public class EstelarSolarListener implements Listener {
 
         for (Location loc : toChange) {
             Block under = loc.getBlock();
-            if (originalBlock.containsKey(loc)) continue; // ya cambiado
+            if (originalBlock.containsKey(loc)) continue;
             if (!canReplace(under)) continue;
             if (entity instanceof Player player && !WorldGuardHelper.canBuild(player, loc)) continue;
 
@@ -243,8 +227,8 @@ public class EstelarSolarListener implements Listener {
             BlockData newBd = Bukkit.createBlockData(replacement);
             originalBlock.put(loc, under.getBlockData());
             blockTimestamps.put(loc, now);
+            protectedBlocks.add(loc);
 
-            // Manejar plantas altas encima del bloque
             Block above1 = under.getRelative(0, 1, 0);
             if (!above1.getType().isAir() && !above1.getType().isSolid()) {
                 originalAbove.put(loc, above1.getBlockData());
@@ -258,7 +242,6 @@ public class EstelarSolarListener implements Listener {
 
             under.setBlockData(newBd, false);
 
-            // Partícula cool visual al cambiar el bloque
             Location pLoc = loc.clone().add(0.5, 1.0, 0.5);
             try {
                 loc.getWorld().spawnParticle(Particle.BLOCK, pLoc, 6, 0.3, 0.05, 0.3, 0, newBd);
@@ -266,7 +249,21 @@ public class EstelarSolarListener implements Listener {
         }
     }
 
-    // ─── PARTÍCULAS DE IMPACTO GENÉRICO (según gogul) ─────────────────────────────────────
+    private Location findSurfaceBelow(Location loc) {
+        World world = loc.getWorld();
+        if (world == null) return null;
+        int x = loc.getBlockX();
+        int z = loc.getBlockZ();
+        int startY = loc.getBlockY();
+
+        for (int y = startY; y >= world.getMinHeight(); y--) {
+            Block block = world.getBlockAt(x, y, z);
+            if (block.getType().isSolid() && !BLOQUEADOS.contains(block.getType())) {
+                return block.getLocation();
+            }
+        }
+        return null;
+    }
 
     private void spawnImpactParticles(World world, Location loc) {
         try {
@@ -274,8 +271,6 @@ public class EstelarSolarListener implements Listener {
             world.spawnParticle(Particle.FLAME, loc, 8, 0.2, 0.2, 0.2, 0.03);
         } catch (Exception ignored) {}
     }
-
-    // ─── TAREA DE RESTAURACIÓN DE BLOQUES ────────────────────────────────────
 
     private void startRestoreTask() {
         new BukkitRunnable() {
@@ -291,6 +286,7 @@ public class EstelarSolarListener implements Listener {
                 for (Location loc : toRemove) {
                     restoreBlock(loc);
                     blockTimestamps.remove(loc);
+                    protectedBlocks.remove(loc);
                 }
             }
         }.runTaskTimer(plugin, 20L, 20L);
@@ -311,8 +307,6 @@ public class EstelarSolarListener implements Listener {
         }
     }
 
-    // ─── UTILIDADES GUAYS ───────────────────────────────────────────────────────────
-
     private boolean canReplace(Block block) {
         Material mat = block.getType();
         if (BLOQUEADOS.contains(mat)) return false;
@@ -321,19 +315,13 @@ public class EstelarSolarListener implements Listener {
         return mat.isSolid();
     }
 
-    /**
-     * Busca el arco o ballesta en mano del jugador que tenga el cosmetico aplicado.
-     * Devuelve null si no lo tiene.
-     */
     private ItemStack getWeaponWithCosmetic(Player player) {
         CosmeticData data = getEstelarSolarData();
         if (data == null) return null;
 
-        // Mano principal (arco / ballesta)
         ItemStack main = player.getInventory().getItemInMainHand();
         if (isBowOrCrossbow(main) && itemHasCosmetico(main, data)) return main;
 
-        // Mano secundaria (por si acaso)
         ItemStack off = player.getInventory().getItemInOffHand();
         if (isBowOrCrossbow(off) && itemHasCosmetico(off, data)) return off;
 
@@ -358,13 +346,10 @@ public class EstelarSolarListener implements Listener {
         return null;
     }
 
-    /**
-     * Calcula un vector perpendicular a `v` para crear la base de la espiral, como cuando 67 se enamoró de tung.
-     */
-    private org.bukkit.util.Vector getPerp1(org.bukkit.util.Vector v) {
-        org.bukkit.util.Vector arbitrary = Math.abs(v.getX()) < 0.9
-                ? new org.bukkit.util.Vector(1, 0, 0)
-                : new org.bukkit.util.Vector(0, 1, 0);
+    private Vector getPerp1(Vector v) {
+        Vector arbitrary = Math.abs(v.getX()) < 0.9
+                ? new Vector(1, 0, 0)
+                : new Vector(0, 1, 0);
         return v.clone().crossProduct(arbitrary).normalize();
     }
 }
