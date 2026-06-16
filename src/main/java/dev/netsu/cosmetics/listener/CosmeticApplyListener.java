@@ -57,12 +57,16 @@ public class CosmeticApplyListener implements Listener {
     private boolean isBoots(Material mat) { return mat.name().endsWith("_BOOTS"); }
     private boolean isChestplate(Material mat) { return mat.name().endsWith("_CHESTPLATE"); }
     private boolean isSword(Material mat) { return mat.name().endsWith("_SWORD"); }
+    private boolean isBowOrCrossbow(Material mat) { return mat == Material.BOW || mat == Material.CROSSBOW; }
 
     private boolean itemValidoParaCosmetic(CosmeticData data, Material mat) {
         return switch (data.itemAplicable) {
             case "BOOTS" -> isBoots(mat);
             case "CHESTPLATE" -> isChestplate(mat);
             case "SWORD" -> isSword(mat);
+            case "BOW" -> mat == Material.BOW;
+            case "CROSSBOW" -> mat == Material.CROSSBOW;
+            case "BOW_OR_CROSSBOW" -> isBowOrCrossbow(mat);
             default -> mat.name().equalsIgnoreCase(data.itemAplicable);
         };
     }
