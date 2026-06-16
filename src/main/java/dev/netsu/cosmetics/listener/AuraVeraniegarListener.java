@@ -13,7 +13,6 @@ import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
-import org.bukkit.util.Vector;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -26,6 +25,7 @@ public class AuraVeraniegarListener implements Listener {
     private final Map<UUID, Long> lastMoved = new HashMap<>();
     private final Map<UUID, Integer> lastEffectSlot = new HashMap<>();
     private final AtomicInteger fishCounter = new AtomicInteger(0);
+    private final Map<UUID, Integer> spiralTicks = new HashMap<>();
 
     private static final double[][] SPAWN_POINTS = {
             { 0.0, 1.7, 0.55},
@@ -87,15 +87,11 @@ public class AuraVeraniegarListener implements Listener {
                 long now = System.currentTimeMillis();
 
                 for (Player player : plugin.getServer().getOnlinePlayers()) {
-                    if (!swordHasCosmetico(player, data)) continue;
-
-                    Location loc = player.getLocation();
-                    World world = player.getWorld();
-
-                    if (RNG.nextInt(3) == 0) {
-                        double[] point = SPAWN_POINTS[RNG.nextInt(SPAWN_POINTS.length)];
-                        world.spawnParticle(Particle.SPLASH, loc.clone().add(point[0], point[1], point[2]), 1, 0, 0, 0, 0);
+                    if (chestplateHasCosmetico(player, data)) {
+                        spawnSpiralWaterEffect(player);
                     }
+
+                    if (!chestplateHasCosmetico(player, data)) continue;
 
                     long quietoMs = now - lastMoved.getOrDefault(player.getUniqueId(), now);
                     if (quietoMs < 5000L) continue;
@@ -105,67 +101,55 @@ public class AuraVeraniegarListener implements Listener {
 
                     if (slot > lastSlot) {
                         lastEffectSlot.put(player.getUniqueId(), slot);
-                        triggerSplashEffect(player);
-                        if (slot % 2 == 0) spawnPezTropical(player);
+                        boolean conPez = (slot % 2 == 0);
+                        if (conPez) spawnPezTropical(player);
                     }
                 }
             }
         }.runTaskTimer(plugin, 1L, 1L);
     }
 
-    private void triggerSplashEffect(Player player) {
-        Location loc = player.getLocation();
+    private void spawnSpiralWaterEffect(Player player) {
+        UUID uuid = player.getUniqueId();
+        int ticks = spiralTicks.getOrDefault(uuid, 0);
+        spiralTicks.put(uuid, ticks + 1);
+
+        Location center = player.getLocation();
         World world = player.getWorld();
 
-        world.spawnParticle(Particle.SPLASH, loc.clone().add(0, 0.1, 0), 30, 0.5, 0.2, 0.5, 0.1);
-        world.spawnParticle(Particle.BUBBLE_POP, loc.clone().add(0, 0.1, 0), 15, 0.4, 0.1, 0.4, 0.05);
-        world.spawnParticle(Particle.FALLING_WATER, loc.clone().add(0, 0.1, 0), 20, 0.6, 0.3, 0.6, 0.08);
+        int spiralPoints = 8;
+        double height = Math.sin(ticks * 0.1) * 0.8 + 1.0;
+        double baseRadius = 0.8;
 
-        world.playSound(loc, Sound.ENTITY_PLAYER_SPLASH, 0.8f, 1.2f);
-        world.playSound(loc, Sound.ENTITY_GENERIC_SPLASH, 0.6f, 1.3f);
+        for (int i = 0; i < spiralPoints; i++) {
+            double angleOffset = (i * (Math.PI * 2 / spiralPoints));
+            double currentAngle = angleOffset + (ticks * 0.15);
 
-        new BukkitRunnable() {
-            int ticks = 0;
+            double radius = baseRadius + Math.sin(ticks * 0.05 + i) * 0.2;
+            
+            Location particleLoc = center.clone().add(
+                    Math.cos(currentAngle) * radius,
+                    height,
+                    Math.sin(currentAngle) * radius
+            );
 
-            @Override
-            public void run() {
-                if (ticks++ >= 30) {
-                    cancel();
-                    return;
-                }
+            world.spawnParticle(Particle.SPLASH, particleLoc, 1, 0.02, 0.02, 0.02, 0);
+            world.spawnParticle(Particle.BUBBLE_POP, particleLoc, 1, 0.02, 0.02, 0.02, 0);
+        }
 
-                double progress = ticks / 30.0;
-                double height = progress * 2.5;
-                double radius = 0.3 + (progress * 0.8);
-                int points = 16;
+        double secondHeight = Math.sin(ticks * 0.1 + Math.PI) * 0.6 + 1.2;
+        for (int i = 0; i < 6; i++) {
+            double angle = (i * (Math.PI * 2 / 6)) + (ticks * 0.2);
+            double radius = 0.6 + Math.sin(ticks * 0.08 + i) * 0.15;
+            
+            Location particleLoc = center.clone().add(
+                    Math.cos(angle) * radius,
+                    secondHeight,
+                    Math.sin(angle) * radius
+            );
 
-                for (int i = 0; i < points; i++) {
-                    double angle = Math.toRadians(i * (360.0 / points) + (ticks * 5));
-                    Location particleLoc = loc.clone().add(
-                            Math.cos(angle) * radius,
-                            height + 0.1,
-                            Math.sin(angle) * radius
-                    );
-
-                    world.spawnParticle(Particle.SPLASH, particleLoc, 2, 0.1, 0.05, 0.1, 0.03);
-
-                    if (ticks % 2 == 0) {
-                        world.spawnParticle(Particle.BUBBLE_POP, particleLoc, 1, 0.05, 0.02, 0.05, 0.02);
-                    }
-
-                    if (ticks % 3 == 0) {
-                        world.spawnParticle(Particle.FALLING_WATER, particleLoc, 1, 0.08, 0.03, 0.08, 0.05);
-                    }
-                }
-
-                Location centerLoc = loc.clone().add(0, height + 0.1, 0);
-                world.spawnParticle(Particle.SPLASH, centerLoc, 3, 0.2, 0.1, 0.2, 0.04);
-
-                if (ticks % 2 == 0) {
-                    world.spawnParticle(Particle.BUBBLE_POP, centerLoc, 2, 0.15, 0.08, 0.15, 0.03);
-                }
-            }
-        }.runTaskTimer(plugin, 0L, 1L);
+            world.spawnParticle(Particle.FALLING_WATER, particleLoc, 1, 0.02, 0.02, 0.02, 0);
+        }
     }
 
     private void spawnPezTropical(Player player) {
@@ -215,13 +199,12 @@ public class AuraVeraniegarListener implements Listener {
         return colors[RNG.nextInt(colors.length)];
     }
 
-    private boolean swordHasCosmetico(Player player, CosmeticData data) {
-        ItemStack weapon = player.getInventory().getItemInMainHand();
-        if (weapon == null || weapon.getType().isAir() || !weapon.hasItemMeta()) return false;
-        if (!weapon.getType().toString().contains("SWORD")) return false;
-
+    private boolean chestplateHasCosmetico(Player player, CosmeticData data) {
+        ItemStack chestplate = player.getInventory().getChestplate();
+        if (chestplate == null || chestplate.getType().isAir() || !chestplate.hasItemMeta()) return false;
+        
         NamespacedKey key = new NamespacedKey(plugin, "cosmetic_" + data.id);
-        return weapon.getItemMeta().getPersistentDataContainer().has(key, PersistentDataType.BYTE);
+        return chestplate.getItemMeta().getPersistentDataContainer().has(key, PersistentDataType.BYTE);
     }
 
     private CosmeticData getAuraData() {
