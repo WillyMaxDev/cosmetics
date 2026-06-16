@@ -89,6 +89,14 @@ public class AuraVeraniegarListener implements Listener {
                 for (Player player : plugin.getServer().getOnlinePlayers()) {
                     if (!swordHasCosmetico(player, data)) continue;
 
+                    Location loc = player.getLocation();
+                    World world = player.getWorld();
+
+                    if (RNG.nextInt(3) == 0) {
+                        double[] point = SPAWN_POINTS[RNG.nextInt(SPAWN_POINTS.length)];
+                        world.spawnParticle(Particle.SPLASH, loc.clone().add(point[0], point[1], point[2]), 1, 0, 0, 0, 0);
+                    }
+
                     long quietoMs = now - lastMoved.getOrDefault(player.getUniqueId(), now);
                     if (quietoMs < 5000L) continue;
 
@@ -98,8 +106,7 @@ public class AuraVeraniegarListener implements Listener {
                     if (slot > lastSlot) {
                         lastEffectSlot.put(player.getUniqueId(), slot);
                         triggerSplashEffect(player);
-                        boolean conPez = (slot % 2 == 0);
-                        if (conPez) spawnPezTropical(player);
+                        if (slot % 2 == 0) spawnPezTropical(player);
                     }
                 }
             }
@@ -116,8 +123,6 @@ public class AuraVeraniegarListener implements Listener {
 
         world.playSound(loc, Sound.ENTITY_PLAYER_SPLASH, 0.8f, 1.2f);
         world.playSound(loc, Sound.ENTITY_GENERIC_SPLASH, 0.6f, 1.3f);
-
-        player.setVelocity(new Vector(0, 0.25, 0));
 
         new BukkitRunnable() {
             int ticks = 0;
