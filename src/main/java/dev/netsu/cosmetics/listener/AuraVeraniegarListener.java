@@ -26,6 +26,35 @@ public class AuraVeraniegarListener implements Listener {
     private final Map<UUID, Integer> lastEffectSlot = new HashMap<>();
     private final AtomicInteger fishCounter = new AtomicInteger(0);
 
+    private static final double[][] SPAWN_POINTS = {
+        { 0.0,  1.7,  0.55},
+        { 0.3,  1.7,  0.45},
+        {-0.3,  1.7,  0.45},
+        { 0.0,  1.7, -0.55},
+        { 0.3,  1.7, -0.45},
+        {-0.3,  1.7, -0.45},
+        { 0.55, 1.5,  0.0 },
+        { 0.55, 1.5,  0.25},
+        { 0.55, 1.5, -0.25},
+        {-0.55, 1.5,  0.0 },
+        {-0.55, 1.5,  0.25},
+        {-0.55, 1.5, -0.25},
+        { 0.35, 1.2,  0.4 },
+        {-0.35, 1.2,  0.4 },
+        { 0.35, 1.2, -0.4 },
+        {-0.35, 1.2, -0.4 },
+        { 0.0,  1.1,  0.5 },
+        { 0.0,  1.1, -0.5 },
+        { 0.5,  1.1,  0.0 },
+        {-0.5,  1.1,  0.0 },
+        { 0.4,  0.8,  0.3 },
+        {-0.4,  0.8,  0.3 },
+        { 0.4,  0.8, -0.3 },
+        {-0.4,  0.8, -0.3 },
+        { 0.0,  0.7,  0.45},
+        { 0.0,  0.7, -0.45}
+    };
+
     public AuraVeraniegarListener(NetsuCosmetics plugin) {
         this.plugin = plugin;
         startMainTask();
@@ -67,64 +96,11 @@ public class AuraVeraniegarListener implements Listener {
                     if (slot > lastSlot) {
                         lastEffectSlot.put(player.getUniqueId(), slot);
                         boolean conPez = (slot % 2 == 0);
-                        spawnEfecto(player, conPez);
+                        if (conPez) spawnPezTropical(player);
                     }
                 }
             }
         }.runTaskTimer(plugin, 1L, 1L);
-    }
-
-    private void spawnEfecto(Player player, boolean conPez) {
-        Location center = player.getLocation().add(0, 0.1, 0);
-
-        player.getWorld().playSound(center, Sound.ENTITY_PLAYER_SPLASH, 1.0f, 0.75f);
-        player.getWorld().playSound(center, Sound.ENTITY_DOLPHIN_SPLASH, 0.7f, 1.2f);
-
-        player.getWorld().spawnParticle(Particle.SPLASH, center, 60, 0.55, 0.05, 0.55, 0.18);
-        player.getWorld().spawnParticle(Particle.FALLING_WATER, center, 35, 0.45, 0.1, 0.45, 0.1);
-
-        new BukkitRunnable() {
-            int frame = 0;
-
-            @Override
-            public void run() {
-                if (frame++ > 10) {
-                    cancel();
-                    if (conPez) spawnPezTropical(player);
-                    return;
-                }
-                double height = frame * 0.5;
-                double radio = Math.max(0.05, 0.55 - frame * 0.045);
-
-                for (int i = 0; i < 28; i++) {
-                    double angle = Math.toRadians(i * (360.0 / 28) + frame * 10);
-                    Location loc = center.clone().add(Math.cos(angle) * radio, height, Math.sin(angle) * radio);
-                    try {
-                        player.getWorld().spawnParticle(Particle.FALLING_WATER, loc, 1, 0.02, 0.04, 0.02, 0.03);
-                    } catch (Exception ignored) {}
-                }
-                for (int i = 0; i < 10; i++) {
-                    Location loc = center.clone().add(
-                            (RNG.nextDouble() - 0.5) * radio * 0.6,
-                            height + RNG.nextDouble() * 0.15,
-                            (RNG.nextDouble() - 0.5) * radio * 0.6
-                    );
-                    try {
-                        player.getWorld().spawnParticle(Particle.FALLING_WATER, loc, 1, 0.01, 0.05, 0.01, 0.04);
-                    } catch (Exception ignored) {}
-                }
-                for (int i = 0; i < 6; i++) {
-                    Location loc = center.clone().add(
-                            (RNG.nextDouble() - 0.5) * 0.6,
-                            height + RNG.nextDouble() * 0.3,
-                            (RNG.nextDouble() - 0.5) * 0.6
-                    );
-                    try {
-                        player.getWorld().spawnParticle(Particle.BUBBLE_POP, loc, 1, 0.03, 0.06, 0.03, 0.015);
-                    } catch (Exception ignored) {}
-                }
-            }
-        }.runTaskTimer(plugin, 0L, 1L);
     }
 
     private void spawnPezTropical(Player player) {
