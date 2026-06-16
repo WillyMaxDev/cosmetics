@@ -83,3 +83,22 @@ cosmeticos:
       - "&r"
       - "&#C70000¡Este item contiene {nombre}&#C70000!"
       - "&r"
+
+  estela_solar:
+    id: "estela_solar"
+    tipo: "ESTELA_SOLAR"
+    usos: 1
+    cabeza:
+      skull_texture: ""
+      nombre: "&#FFD700&lE&#FFC300&lS&#FFB000&lT&#FF9D00&lE&#FF8A00&lL&#FF7700&lA &#FF6400&lS&#FF7700&lO&#FF8A00&lL&#FF9D00&lA&#FFB000&lR"
+      lore:
+        - "&7Cosmetico de arco/ballesta"
+        - "&eFlecha imbuida con el poder del sol"
+        - ""
+        - "&7Usos: &e{usos}"
+      nombre_display: "Estela Solar"
+    item_aplicable: "BOW_OR_CROSSBOW"
+    lore_aplicado:
+      - "&r"
+      - "&#C70000¡Este item contiene {nombre}&#C70000!"
+      - "&r"
