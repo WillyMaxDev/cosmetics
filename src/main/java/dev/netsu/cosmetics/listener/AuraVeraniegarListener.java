@@ -17,44 +17,45 @@ import org.bukkit.scheduler.BukkitRunnable;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class BrisaMarinaListener implements Listener {
+public class AuraVeraniegarListener implements Listener {
 
     private final NetsuCosmetics plugin;
     private static final Random RNG = new Random();
+
     private final Map<UUID, Long> lastMoved = new HashMap<>();
     private final Map<UUID, Integer> lastEffectSlot = new HashMap<>();
     private final AtomicInteger fishCounter = new AtomicInteger(0);
 
     private static final double[][] SPAWN_POINTS = {
-            { 0.0, 1.7, 0.55},
-            { 0.3, 1.7, 0.45},
-            {-0.3, 1.7, 0.45},
-            { 0.0, 1.7, -0.55},
-            { 0.3, 1.7, -0.45},
-            {-0.3, 1.7, -0.45},
-            { 0.55, 1.5, 0.0 },
-            { 0.55, 1.5, 0.25},
-            { 0.55, 1.5, -0.25},
-            {-0.55, 1.5, 0.0 },
-            {-0.55, 1.5, 0.25},
-            {-0.55, 1.5, -0.25},
-            { 0.35, 1.2, 0.4 },
-            {-0.35, 1.2, 0.4 },
-            { 0.35, 1.2, -0.4 },
-            {-0.35, 1.2, -0.4 },
-            { 0.0, 1.1, 0.5 },
-            { 0.0, 1.1, -0.5 },
-            { 0.5, 1.1, 0.0 },
-            {-0.5, 1.1, 0.0 },
-            { 0.4, 0.8, 0.3 },
-            {-0.4, 0.8, 0.3 },
-            { 0.4, 0.8, -0.3 },
-            {-0.4, 0.8, -0.3 },
-            { 0.0, 0.7, 0.45},
-            { 0.0, 0.7, -0.45}
+        { 0.0,  1.7,  0.55},
+        { 0.3,  1.7,  0.45},
+        {-0.3,  1.7,  0.45},
+        { 0.0,  1.7, -0.55},
+        { 0.3,  1.7, -0.45},
+        {-0.3,  1.7, -0.45},
+        { 0.55, 1.5,  0.0 },
+        { 0.55, 1.5,  0.25},
+        { 0.55, 1.5, -0.25},
+        {-0.55, 1.5,  0.0 },
+        {-0.55, 1.5,  0.25},
+        {-0.55, 1.5, -0.25},
+        { 0.35, 1.2,  0.4 },
+        {-0.35, 1.2,  0.4 },
+        { 0.35, 1.2, -0.4 },
+        {-0.35, 1.2, -0.4 },
+        { 0.0,  1.1,  0.5 },
+        { 0.0,  1.1, -0.5 },
+        { 0.5,  1.1,  0.0 },
+        {-0.5,  1.1,  0.0 },
+        { 0.4,  0.8,  0.3 },
+        {-0.4,  0.8,  0.3 },
+        { 0.4,  0.8, -0.3 },
+        {-0.4,  0.8, -0.3 },
+        { 0.0,  0.7,  0.45},
+        { 0.0,  0.7, -0.45}
     };
 
-    public BrisaMarinaListener(NetsuCosmetics plugin) {
+    public AuraVeraniegarListener(NetsuCosmetics plugin) {
         this.plugin = plugin;
         startMainTask();
     }
@@ -79,13 +80,12 @@ public class BrisaMarinaListener implements Listener {
         new BukkitRunnable() {
             @Override
             public void run() {
-                CosmeticData data = getBrisaData();
+                CosmeticData data = getAuraData();
                 if (data == null) return;
-
                 long now = System.currentTimeMillis();
 
                 for (Player player : plugin.getServer().getOnlinePlayers()) {
-                    if (!swordHasCosmetico(player, data)) continue;
+                    if (!chestplateHasCosmetico(player, data)) continue;
 
                     long quietoMs = now - lastMoved.getOrDefault(player.getUniqueId(), now);
                     if (quietoMs < 5000L) continue;
@@ -120,7 +120,6 @@ public class BrisaMarinaListener implements Listener {
             entity.setGravity(true);
             entity.setSilent(true);
             entity.setInvulnerable(true);
-
             TropicalFish.Pattern[] patterns = TropicalFish.Pattern.values();
             entity.setPattern(patterns[RNG.nextInt(patterns.length)]);
             entity.setBodyColor(randomDyeColor());
@@ -132,7 +131,6 @@ public class BrisaMarinaListener implements Listener {
             }
 
             TropicalFish fish = entity;
-
             new BukkitRunnable() {
                 @Override
                 public void run() {
@@ -143,50 +141,6 @@ public class BrisaMarinaListener implements Listener {
                 }
             }.runTaskLater(plugin, 100L);
         });
-
-        spawnSplashParticles(player, loc);
-    }
-
-    private void spawnSplashParticles(Player player, Location center) {
-        Location baseLoc = player.getLocation().add(0, 0.1, 0);
-        
-        player.getWorld().spawnParticle(Particle.SPLASH, baseLoc, 20, 0.5, 0.2, 0.5, 0.1);
-        player.getWorld().spawnParticle(Particle.BUBBLE_POP, baseLoc, 10, 0.4, 0.1, 0.4, 0.05);
-        player.getWorld().spawnParticle(Particle.FALLING_WATER, baseLoc, 15, 0.6, 0.3, 0.6, 0.08);
-        
-        player.getWorld().playSound(baseLoc, Sound.ENTITY_PLAYER_SPLASH, 0.6f, 1.3f);
-        player.getWorld().playSound(baseLoc, Sound.ENTITY_GENERIC_SPLASH, 0.5f, 1.4f);
-        
-        new BukkitRunnable() {
-            int ticks = 0;
-            
-            @Override
-            public void run() {
-                if (ticks++ >= 20) {
-                    cancel();
-                    return;
-                }
-                
-                double progress = ticks / 20.0;
-                double radius = 0.3 + (progress * 0.4);
-                int points = 12;
-                
-                for (int i = 0; i < points; i++) {
-                    double angle = Math.toRadians(i * (360.0 / points));
-                    Location loc = baseLoc.clone().add(
-                            Math.cos(angle) * radius,
-                            progress * 0.5,
-                            Math.sin(angle) * radius
-                    );
-                    
-                    player.getWorld().spawnParticle(Particle.SPLASH, loc, 1, 0.05, 0.02, 0.05, 0.02);
-                    
-                    if (ticks % 3 == 0) {
-                        player.getWorld().spawnParticle(Particle.BUBBLE_POP, loc, 1, 0.03, 0.01, 0.03, 0.01);
-                    }
-                }
-            }
-        }.runTaskTimer(plugin, 0L, 1L);
     }
 
     private DyeColor randomDyeColor() {
@@ -194,18 +148,16 @@ public class BrisaMarinaListener implements Listener {
         return colors[RNG.nextInt(colors.length)];
     }
 
-    private boolean swordHasCosmetico(Player player, CosmeticData data) {
-        ItemStack weapon = player.getInventory().getItemInMainHand();
-        if (weapon == null || weapon.getType().isAir() || !weapon.hasItemMeta()) return false;
-        if (!weapon.getType().toString().contains("SWORD")) return false;
-        
+    private boolean chestplateHasCosmetico(Player player, CosmeticData data) {
+        ItemStack chest = player.getInventory().getChestplate();
+        if (chest == null || chest.getType().isAir() || !chest.hasItemMeta()) return false;
         NamespacedKey key = new NamespacedKey(plugin, "cosmetic_" + data.id);
-        return weapon.getItemMeta().getPersistentDataContainer().has(key, PersistentDataType.BYTE);
+        return chest.getItemMeta().getPersistentDataContainer().has(key, PersistentDataType.BYTE);
     }
 
-    private CosmeticData getBrisaData() {
+    private CosmeticData getAuraData() {
         for (CosmeticData d : plugin.getCosmeticManager().getAll()) {
-            if (d.tipo.equalsIgnoreCase("BRISA_MARINA")) return d;
+            if (d.tipo.equalsIgnoreCase("AURA_VERANIEGA")) return d;
         }
         return null;
     }
