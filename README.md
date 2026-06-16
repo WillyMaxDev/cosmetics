@@ -1,41 +1,40 @@
 # NetsuCosmetics
 
-Plugin de cosméticos personalizados para servidores Minecraft Paper 1.21+
+Plugin de cosméticos personalizados para servidores Minecraft Paper 1.21+, especialmente para letal network (:
 
-## Características
+## Característicasv MUUUUUUU
 
-- **Camino Soleado**: Bloques temporales que aparecen bajo los pies del jugador al caminar, desapareciendo automáticamente 3 segundos después de que dejas de pisar la zona
-- **Aura Veraniega**: Efecto visual de agua y partículas que aparece cuando el jugador está quieto, con partículas de agua mejoradas y más burbujas
-- **Brisa Marina**: Cosmético con efectos de agua y aire
-- **Ground Land**: Efecto de aterrizaje personalizado
+- **Camino Soleado**: Bloques temporales que aparecen bajo los pies del jugador al caminar, desapareciendo automáticamente 3 segundos después de que dejas de pisar la zona, que cute
+- **Aura Veraniega**: Efecto visual de agua y partículas que aparece cuando el jugador está quieto, con partículas de agua super kawai
+- **Brisa Marina**: Cosmético con efectos de agua y aire muy chupiguays
 
-## Instalación
+## Instalación 67 brainrot aura farming te voy a papear
 
-1. Descarga el archivo `NetsuCosmetics.jar` desde [Releases](https://github.com/WillyMaxDev/cosmetics/releases)
-2. Colócalo en la carpeta `plugins` de tu servidor
-3. Reinicia o recarga el servidor
-4. Configura los cosméticos en los archivos de configuración generados
+1. Descarga el plugin que se llama `NetsuCosmetics.jar` desde [Releases](https://github.com/WillyMaxDev/cosmetics/releases)
+2. Cogetela y ponla en la carpeta `plugins` de tu servidor
+3. Reinicia o recarga o reinicia o recarga el servidor
+4. Configura los cosméticos en los archivos de configuración generados por un umpalumpa indio :)
 
 ## Requisitos
 
 - Paper 1.21+
-- WorldGuard (opcional, para protección de zonas)
+- un ordenador
+- un jugador
+- el maincra
+- nose
+- saber leer
+- supongo
+- no tener menos de 6 años, que si no me da cosa sabes
+- 6767676 jajajaj que risa
 
 ## Comandos
 
-- `/nc` - Comando principal del plugin
+- `/nc` - (no caca) - Comando del plugin, supongo
 
 ## Configuración
 
-Los cosméticos se pueden configurar editando los archivos YAML en la carpeta `plugins/NetsuCosmetics/`
+Los cosméticos se pueden configurar toqueteando los archivos yamin yamal en la carpeta `plugins/NetsuCosmetics/`
 
 ## Versión
 
-v0.1.8
-
-## Cambios Recientes
-
-- ✅ Arreglado ConcurrentModificationException
-- ✅ Bloques temporales con desaparición automática (3 segundos)
-- ✅ Removido efecto AFK del Camino Soleado
-- ✅ Mejorado Aura Veraniega con más partículas
+nose
