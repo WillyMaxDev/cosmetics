@@ -25,8 +25,40 @@ public class EstelarSolarListener implements Listener {
     private final NetsuCosmetics plugin;
     private static final Random RNG = new Random();
 
-    private final Set<UUID> trackedArrows = new HashSet<>();
-    private final Map<UUID, Long> lastTailParticle = new HashMap<>();
+    private static final double TWO_PI = 2 * Math.PI;
+    private static final double SPIRAL_SPEED = 1.0 / 40.0;
+    private static final int SPIRAL_POINTS = 8;
+    private static final double SPIRAL_RADIUS = 0.25;
+    private static final double SPIRAL_STEP = TWO_PI / SPIRAL_POINTS;
+    private static final long TAIL_INTERVAL_MS = 3000L;
+    private static final long BLOCK_RESTORE_MS = 3000L;
+    private static final int BLOCKS_MIN = 6;
+    private static final int BLOCKS_EXTRA = 5;
+
+    private static final Material[] BLOQUES_SOLAR = {
+        Material.SAND, Material.SANDSTONE,
+        Material.SMOOTH_SANDSTONE, Material.CUT_SANDSTONE
+    };
+
+    private static final Set<Material> BLOQUEADOS = EnumSet.of(
+        Material.BEDROCK, Material.WATER, Material.LAVA,
+        Material.AIR, Material.CAVE_AIR, Material.VOID_AIR,
+        Material.NETHER_PORTAL, Material.END_PORTAL, Material.END_GATEWAY,
+        Material.END_PORTAL_FRAME, Material.BARRIER
+    );
+
+    private static final Set<Material> TALL_TOP = EnumSet.of(
+        Material.TALL_GRASS, Material.LARGE_FERN,
+        Material.SUNFLOWER, Material.LILAC, Material.ROSE_BUSH, Material.PEONY,
+        Material.PITCHER_PLANT, Material.TALL_SEAGRASS
+    );
+
+    private static final class ArrowData {
+        long lastTailMs;
+        ArrowData(long now) { this.lastTailMs = now; }
+    }
+
+    private final Map<UUID, ArrowData> trackedArrows = new HashMap<>();
 
     private final Map<Location, BlockData> originalBlock = new HashMap<>();
     private final Map<Location, BlockData> originalAbove = new HashMap<>();
@@ -34,29 +66,19 @@ public class EstelarSolarListener implements Listener {
     private final Map<Location, Long> blockTimestamps = new HashMap<>();
     private final Set<Location> protectedBlocks = new HashSet<>();
 
-    private static final Set<Material> BLOQUEADOS = new HashSet<>(Arrays.asList(
-            Material.BEDROCK, Material.WATER, Material.LAVA,
-            Material.AIR, Material.CAVE_AIR, Material.VOID_AIR,
-            Material.NETHER_PORTAL, Material.END_PORTAL, Material.END_GATEWAY,
-            Material.END_PORTAL_FRAME, Material.BARRIER
-    ));
+    private CosmeticData cachedData = null;
+    private final NamespacedKey cosmeticKey;
 
-    private static final Set<Material> TALL_TOP = new HashSet<>(Arrays.asList(
-            Material.TALL_GRASS, Material.LARGE_FERN,
-            Material.SUNFLOWER, Material.LILAC, Material.ROSE_BUSH, Material.PEONY,
-            Material.PITCHER_PLANT, Material.TALL_SEAGRASS
-    ));
-
-    private static final List<Material> BLOQUES_SOLAR = Arrays.asList(
-            Material.SAND,
-            Material.SANDSTONE,
-            Material.SMOOTH_SANDSTONE,
-            Material.CUT_SANDSTONE
-    );
+    private final Vector reuseVel = new Vector();
+    private final Vector reusePerp1 = new Vector();
+    private final Vector reusePerp2 = new Vector();
+    private final Vector reuseOffset = new Vector();
+    private final Location reuseLoc = new Location(null, 0, 0, 0);
 
     public EstelarSolarListener(NetsuCosmetics plugin) {
         this.plugin = plugin;
-        startSpiralAndTailTask();
+        this.cosmeticKey = new NamespacedKey(plugin, "cosmetic_estela_solar");
+        startSpiralTask();
         startRestoreTask();
     }
 
@@ -65,22 +87,15 @@ public class EstelarSolarListener implements Listener {
         Projectile proj = event.getEntity();
         if (!(proj instanceof Arrow)) return;
         if (!(proj.getShooter() instanceof Player player)) return;
-
-        ItemStack weapon = getWeaponWithCosmetic(player);
-        if (weapon == null) return;
-
-        trackedArrows.add(proj.getUniqueId());
-        lastTailParticle.put(proj.getUniqueId(), System.currentTimeMillis());
+        if (!playerHasCosmetic(player)) return;
+        trackedArrows.put(proj.getUniqueId(), new ArrowData(System.currentTimeMillis()));
     }
 
     @EventHandler
     public void onProjectileHit(ProjectileHitEvent event) {
         Projectile proj = event.getEntity();
         if (!(proj instanceof Arrow)) return;
-
-        UUID id = proj.getUniqueId();
-        if (!trackedArrows.remove(id)) return;
-        lastTailParticle.remove(id);
+        if (trackedArrows.remove(proj.getUniqueId()) == null) return;
 
         Entity hitEntity = event.getHitEntity();
         Block hitBlock = event.getHitBlock();
@@ -95,78 +110,76 @@ public class EstelarSolarListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onBlockBreak(BlockBreakEvent event) {
-        Location loc = event.getBlock().getLocation();
-        if (protectedBlocks.contains(loc)) {
+        if (protectedBlocks.contains(event.getBlock().getLocation())) {
             event.setCancelled(true);
         }
     }
 
-    private void startSpiralAndTailTask() {
+    private void startSpiralTask() {
         new BukkitRunnable() {
             @Override
             public void run() {
                 if (trackedArrows.isEmpty()) return;
+
                 long now = System.currentTimeMillis();
+                double rotation = (now * SPIRAL_SPEED) % TWO_PI;
 
-                for (World world : plugin.getServer().getWorlds()) {
-                    for (Entity entity : world.getEntities()) {
-                        if (!(entity instanceof Arrow arrow)) continue;
-                        UUID arrowId = arrow.getUniqueId();
-                        if (!trackedArrows.contains(arrowId)) continue;
+                Iterator<Map.Entry<UUID, ArrowData>> it = trackedArrows.entrySet().iterator();
+                while (it.hasNext()) {
+                    Map.Entry<UUID, ArrowData> entry = it.next();
+                    Entity entity = plugin.getServer().getEntity(entry.getKey());
 
-                        if (arrow.isDead() || arrow.isOnGround()) {
-                            trackedArrows.remove(arrowId);
-                            lastTailParticle.remove(arrowId);
-                            continue;
-                        }
+                    if (!(entity instanceof Arrow arrow) || arrow.isDead() || arrow.isOnGround()) {
+                        it.remove();
+                        continue;
+                    }
 
-                        spawnSpiralAroundArrow(arrow, now);
+                    spawnSpiralAroundArrow(arrow, rotation);
 
-                        long lastTail = lastTailParticle.getOrDefault(arrowId, now);
-                        if (now - lastTail >= 3000L) {
-                            lastTailParticle.put(arrowId, now);
-                            spawnTailBurst(arrow);
-                        }
+                    ArrowData data = entry.getValue();
+                    if (now - data.lastTailMs >= TAIL_INTERVAL_MS) {
+                        data.lastTailMs = now;
+                        spawnTailBurst(arrow);
                     }
                 }
             }
         }.runTaskTimer(plugin, 0L, 1L);
     }
 
-    private void spawnSpiralAroundArrow(Arrow arrow, long now) {
-        Location loc = arrow.getLocation();
-        Vector vel = arrow.getVelocity();
-        if (vel.lengthSquared() < 0.0001) return;
-        vel = vel.clone().normalize();
+    private void spawnSpiralAroundArrow(Arrow arrow, double rotation) {
+        arrow.getVelocity(reuseVel);
+        if (reuseVel.lengthSquared() < 0.0001) return;
+        reuseVel.normalize();
 
-        Vector perp1 = getPerp1(vel);
-        Vector perp2 = vel.clone().crossProduct(perp1).normalize();
+        computePerp1(reuseVel, reusePerp1);
+        reusePerp2.copy(reuseVel).crossProduct(reusePerp1).normalize();
 
-        double rotation = (now / 40.0) % (2 * Math.PI);
-        int points = 8;
-        double radius = 0.25;
+        Location arrowLoc = arrow.getLocation();
+        World world = arrowLoc.getWorld();
 
-        for (int i = 0; i < points; i++) {
-            double angle = rotation + (i * (2 * Math.PI / points));
-            double cos = Math.cos(angle) * radius;
-            double sin = Math.sin(angle) * radius;
+        for (int i = 0; i < SPIRAL_POINTS; i++) {
+            double angle = rotation + (i * SPIRAL_STEP);
+            double cos = Math.cos(angle) * SPIRAL_RADIUS;
+            double sin = Math.sin(angle) * SPIRAL_RADIUS;
 
-            Location particleLoc = loc.clone().add(
-                    perp1.clone().multiply(cos).add(perp2.clone().multiply(sin))
-            );
+            reuseOffset.setX(reusePerp1.getX() * cos + reusePerp2.getX() * sin);
+            reuseOffset.setY(reusePerp1.getY() * cos + reusePerp2.getY() * sin);
+            reuseOffset.setZ(reusePerp1.getZ() * cos + reusePerp2.getZ() * sin);
 
-            try {
-                arrow.getWorld().spawnParticle(Particle.END_ROD, particleLoc, 1, 0, 0, 0, 0);
-            } catch (Exception ignored) {}
+            reuseLoc.setWorld(world);
+            reuseLoc.setX(arrowLoc.getX() + reuseOffset.getX());
+            reuseLoc.setY(arrowLoc.getY() + reuseOffset.getY());
+            reuseLoc.setZ(arrowLoc.getZ() + reuseOffset.getZ());
+
+            world.spawnParticle(Particle.END_ROD, reuseLoc, 1, 0, 0, 0, 0);
         }
     }
 
     private void spawnTailBurst(Arrow arrow) {
         Location loc = arrow.getLocation();
-        try {
-            arrow.getWorld().spawnParticle(Particle.FLAME, loc, 6, 0.05, 0.05, 0.05, 0.01);
-            arrow.getWorld().spawnParticle(Particle.END_ROD, loc, 3, 0.08, 0.08, 0.08, 0.005);
-        } catch (Exception ignored) {}
+        World world = loc.getWorld();
+        world.spawnParticle(Particle.FLAME, loc, 6, 0.05, 0.05, 0.05, 0.01);
+        world.spawnParticle(Particle.END_ROD, loc, 3, 0.08, 0.08, 0.08, 0.005);
 
         new BukkitRunnable() {
             int ticks = 0;
@@ -176,44 +189,42 @@ public class EstelarSolarListener implements Listener {
                     cancel();
                     return;
                 }
-                try {
-                    arrow.getLocation().getWorld().spawnParticle(Particle.FLAME, arrow.getLocation(), 1, 0.03, 0.03, 0.03, 0.003);
-                } catch (Exception ignored) {}
+                Location l = arrow.getLocation();
+                l.getWorld().spawnParticle(Particle.FLAME, l, 1, 0.03, 0.03, 0.03, 0.003);
             }
         }.runTaskTimer(plugin, 0L, 1L);
     }
 
     private void applyBlocksAroundEntity(LivingEntity entity) {
         Location entityLoc = entity.getLocation();
-        double entityY = entityLoc.getY();
-
         Location surfaceCenter = findSurfaceBelow(entityLoc);
         if (surfaceCenter == null) return;
 
-        double surfaceTopY = surfaceCenter.getY() + 1.0;
-        double heightAboveSurface = entityY - surfaceTopY;
-
+        double heightAboveSurface = entityLoc.getY() - (surfaceCenter.getY() + 1.0);
         if (heightAboveSurface > 2.0) return;
 
         long now = System.currentTimeMillis();
-        int totalTarget = 6 + RNG.nextInt(5);
+        int totalTarget = BLOCKS_MIN + RNG.nextInt(BLOCKS_EXTRA);
 
-        List<Location> candidates = new ArrayList<>();
+        List<Location> candidates = new ArrayList<>(24);
+        int ex = entityLoc.getBlockX();
+        int ez = entityLoc.getBlockZ();
+        World world = entityLoc.getWorld();
+
         for (int dx = -2; dx <= 2; dx++) {
             for (int dz = -2; dz <= 2; dz++) {
                 if (dx == 0 && dz == 0) continue;
-                Location surfLoc = findSurfaceBelow(entityLoc.clone().add(dx, 0, dz));
+                Location surfLoc = findSurfaceBelowXZ(world, ex + dx, ez + dz, entityLoc.getBlockY());
                 if (surfLoc != null) candidates.add(surfLoc);
             }
         }
         Collections.shuffle(candidates, RNG);
 
-        List<Location> toChange = new ArrayList<>();
+        List<Location> toChange = new ArrayList<>(totalTarget);
         toChange.add(surfaceCenter);
         int added = 1;
-        for (Location cand : candidates) {
-            if (added >= totalTarget) break;
-            toChange.add(cand);
+        for (int i = 0; i < candidates.size() && added < totalTarget; i++) {
+            toChange.add(candidates.get(i));
             added++;
         }
 
@@ -223,14 +234,15 @@ public class EstelarSolarListener implements Listener {
             if (!canReplace(under)) continue;
             if (entity instanceof Player player && !WorldGuardHelper.canBuild(player, loc)) continue;
 
-            Material replacement = BLOQUES_SOLAR.get(RNG.nextInt(BLOQUES_SOLAR.size()));
-            BlockData newBd = Bukkit.createBlockData(replacement);
+            Material replacement = BLOQUES_SOLAR[RNG.nextInt(BLOQUES_SOLAR.length)];
+            BlockData newBd = replacement.createBlockData();
             originalBlock.put(loc, under.getBlockData());
             blockTimestamps.put(loc, now);
             protectedBlocks.add(loc);
 
             Block above1 = under.getRelative(0, 1, 0);
-            if (!above1.getType().isAir() && !above1.getType().isSolid()) {
+            Material above1Mat = above1.getType();
+            if (!above1Mat.isAir() && !above1Mat.isSolid()) {
                 originalAbove.put(loc, above1.getBlockData());
                 Block above2 = under.getRelative(0, 2, 0);
                 if (TALL_TOP.contains(above2.getType())) {
@@ -241,115 +253,105 @@ public class EstelarSolarListener implements Listener {
             }
 
             under.setBlockData(newBd, false);
-
-            Location pLoc = loc.clone().add(0.5, 1.0, 0.5);
-            try {
-                loc.getWorld().spawnParticle(Particle.BLOCK, pLoc, 6, 0.3, 0.05, 0.3, 0, newBd);
-            } catch (Exception ignored) {}
+            world.spawnParticle(Particle.BLOCK, loc.getX() + 0.5, loc.getY() + 1.0, loc.getZ() + 0.5, 6, 0.3, 0.05, 0.3, 0, newBd);
         }
     }
 
     private Location findSurfaceBelow(Location loc) {
-        World world = loc.getWorld();
-        if (world == null) return null;
-        int x = loc.getBlockX();
-        int z = loc.getBlockZ();
-        int startY = loc.getBlockY();
+        return findSurfaceBelowXZ(loc.getWorld(), loc.getBlockX(), loc.getBlockZ(), loc.getBlockY());
+    }
 
-        for (int y = startY; y >= world.getMinHeight(); y--) {
-            Block block = world.getBlockAt(x, y, z);
-            if (block.getType().isSolid() && !BLOQUEADOS.contains(block.getType())) {
-                return block.getLocation();
+    private Location findSurfaceBelowXZ(World world, int x, int z, int startY) {
+        if (world == null) return null;
+        int minY = world.getMinHeight();
+        for (int y = startY; y >= minY; y--) {
+            Material mat = world.getBlockAt(x, y, z).getType();
+            if (mat.isSolid() && !BLOQUEADOS.contains(mat)) {
+                return new Location(world, x, y, z);
             }
         }
         return null;
     }
 
     private void spawnImpactParticles(World world, Location loc) {
-        try {
-            world.spawnParticle(Particle.END_ROD, loc, 12, 0.3, 0.3, 0.3, 0.05);
-            world.spawnParticle(Particle.FLAME, loc, 8, 0.2, 0.2, 0.2, 0.03);
-        } catch (Exception ignored) {}
+        world.spawnParticle(Particle.END_ROD, loc, 12, 0.3, 0.3, 0.3, 0.05);
+        world.spawnParticle(Particle.FLAME, loc, 8, 0.2, 0.2, 0.2, 0.03);
     }
 
     private void startRestoreTask() {
         new BukkitRunnable() {
             @Override
             public void run() {
+                if (blockTimestamps.isEmpty()) return;
                 long now = System.currentTimeMillis();
-                List<Location> toRemove = new ArrayList<>();
-                for (Map.Entry<Location, Long> entry : blockTimestamps.entrySet()) {
-                    if (now - entry.getValue() >= 3000L) {
-                        toRemove.add(entry.getKey());
+                blockTimestamps.entrySet().removeIf(entry -> {
+                    if (now - entry.getValue() >= BLOCK_RESTORE_MS) {
+                        Location loc = entry.getKey();
+                        restoreBlock(loc);
+                        protectedBlocks.remove(loc);
+                        return true;
                     }
-                }
-                for (Location loc : toRemove) {
-                    restoreBlock(loc);
-                    blockTimestamps.remove(loc);
-                    protectedBlocks.remove(loc);
-                }
+                    return false;
+                });
             }
         }.runTaskTimer(plugin, 20L, 20L);
     }
 
     private void restoreBlock(Location loc) {
         BlockData above2 = originalAbove2.remove(loc);
-        if (above2 != null) {
-            try { loc.getBlock().getRelative(0, 2, 0).setBlockData(above2, false); } catch (Exception ignored) {}
-        }
+        if (above2 != null) loc.getBlock().getRelative(0, 2, 0).setBlockData(above2, false);
         BlockData above = originalAbove.remove(loc);
-        if (above != null) {
-            try { loc.getBlock().getRelative(0, 1, 0).setBlockData(above, false); } catch (Exception ignored) {}
-        }
+        if (above != null) loc.getBlock().getRelative(0, 1, 0).setBlockData(above, false);
         BlockData bd = originalBlock.remove(loc);
-        if (bd != null) {
-            try { loc.getBlock().setBlockData(bd, false); } catch (Exception ignored) {}
-        }
+        if (bd != null) loc.getBlock().setBlockData(bd, false);
     }
 
     private boolean canReplace(Block block) {
         Material mat = block.getType();
+        if (!mat.isSolid()) return false;
         if (BLOQUEADOS.contains(mat)) return false;
         String name = mat.name();
-        if (name.contains("PORTAL") || name.contains("GATEWAY")) return false;
-        return mat.isSolid();
+        return !name.contains("PORTAL") && !name.contains("GATEWAY");
     }
 
-    private ItemStack getWeaponWithCosmetic(Player player) {
-        CosmeticData data = getEstelarSolarData();
-        if (data == null) return null;
-
+    private boolean playerHasCosmetic(Player player) {
+        CosmeticData data = getCachedData();
+        if (data == null) return false;
         ItemStack main = player.getInventory().getItemInMainHand();
-        if (isBowOrCrossbow(main) && itemHasCosmetico(main, data)) return main;
-
+        if (isBowOrCrossbow(main) && itemHasCosmetico(main)) return true;
         ItemStack off = player.getInventory().getItemInOffHand();
-        if (isBowOrCrossbow(off) && itemHasCosmetico(off, data)) return off;
-
-        return null;
+        return isBowOrCrossbow(off) && itemHasCosmetico(off);
     }
 
     private boolean isBowOrCrossbow(ItemStack item) {
         if (item == null || item.getType().isAir()) return false;
-        return item.getType() == Material.BOW || item.getType() == Material.CROSSBOW;
+        Material m = item.getType();
+        return m == Material.BOW || m == Material.CROSSBOW;
     }
 
-    private boolean itemHasCosmetico(ItemStack item, CosmeticData data) {
-        if (item == null || item.getType().isAir() || !item.hasItemMeta()) return false;
-        NamespacedKey key = new NamespacedKey(plugin, "cosmetic_" + data.id);
-        return item.getItemMeta().getPersistentDataContainer().has(key, PersistentDataType.BYTE);
+    private boolean itemHasCosmetico(ItemStack item) {
+        if (!item.hasItemMeta()) return false;
+        return item.getItemMeta().getPersistentDataContainer().has(cosmeticKey, PersistentDataType.BYTE);
     }
 
-    private CosmeticData getEstelarSolarData() {
-        for (CosmeticData d : plugin.getCosmeticManager().getAll()) {
-            if (d.tipo.equalsIgnoreCase("ESTELA_SOLAR")) return d;
+    private CosmeticData getCachedData() {
+        if (cachedData == null) {
+            for (CosmeticData d : plugin.getCosmeticManager().getAll()) {
+                if (d.tipo.equalsIgnoreCase("ESTELA_SOLAR")) {
+                    cachedData = d;
+                    break;
+                }
+            }
         }
-        return null;
+        return cachedData;
     }
 
-    private Vector getPerp1(Vector v) {
-        Vector arbitrary = Math.abs(v.getX()) < 0.9
-                ? new Vector(1, 0, 0)
-                : new Vector(0, 1, 0);
-        return v.clone().crossProduct(arbitrary).normalize();
+    private void computePerp1(Vector v, Vector out) {
+        if (Math.abs(v.getX()) < 0.9) {
+            out.setX(0); out.setY(-v.getZ()); out.setZ(v.getY());
+        } else {
+            out.setX(v.getY()); out.setY(-v.getX()); out.setZ(0);
+        }
+        out.normalize();
     }
 }
