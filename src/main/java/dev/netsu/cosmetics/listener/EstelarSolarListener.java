@@ -150,12 +150,14 @@ public class EstelarSolarListener implements Listener {
     }
 
     private void spawnSpiralAroundArrow(Arrow arrow, double rotation) {
-        arrow.getVelocity(reuseVel);
-        if (reuseVel.lengthSquared() < 0.0001) return;
+        Vector vel = arrow.getVelocity();
+        if (vel.lengthSquared() < 0.0001) return;
+        reuseVel.setX(vel.getX()); reuseVel.setY(vel.getY()); reuseVel.setZ(vel.getZ());
         reuseVel.normalize();
 
         computePerp1(reuseVel, reusePerp1);
-        reusePerp2.copy(reuseVel).crossProduct(reusePerp1).normalize();
+        reusePerp2.setX(reuseVel.getX()); reusePerp2.setY(reuseVel.getY()); reusePerp2.setZ(reuseVel.getZ());
+        reusePerp2.crossProduct(reusePerp1).normalize();
 
         Location arrowLoc = arrow.getLocation();
         World world = arrowLoc.getWorld();
