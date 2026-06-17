@@ -15,22 +15,46 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class AuraVeraniegarListener implements Listener {
 
     private final NetsuCosmetics plugin;
     private static final Random RNG = new Random();
 
-    private final Map<UUID, Long> lastMoved      = new HashMap<>();
+    private final Map<UUID, Long> lastMoved = new HashMap<>();
     private final Map<UUID, Integer> lastEffectSlot = new HashMap<>();
+    private final AtomicInteger fishCounter = new AtomicInteger(0);
+    private final Map<UUID, Integer> spiralTicks = new HashMap<>();
 
-    private static int fishCounter = 0;
-
-    private static final DyeColor[] DYE_COLORS     = DyeColor.values();
-    private static final TropicalFish.Pattern[] PATTERNS = TropicalFish.Pattern.values();
-
-    private CosmeticData cachedData = null;
-    private NamespacedKey cachedKey = null;
+    private static final double[][] SPAWN_POINTS = {
+            { 0.0, 1.7, 0.55},
+            { 0.3, 1.7, 0.45},
+            {-0.3, 1.7, 0.45},
+            { 0.0, 1.7, -0.55},
+            { 0.3, 1.7, -0.45},
+            {-0.3, 1.7, -0.45},
+            { 0.55, 1.5, 0.0 },
+            { 0.55, 1.5, 0.25},
+            { 0.55, 1.5, -0.25},
+            {-0.55, 1.5, 0.0 },
+            {-0.55, 1.5, 0.25},
+            {-0.55, 1.5, -0.25},
+            { 0.35, 1.2, 0.4 },
+            {-0.35, 1.2, 0.4 },
+            { 0.35, 1.2, -0.4 },
+            {-0.35, 1.2, -0.4 },
+            { 0.0, 1.1, 0.5 },
+            { 0.0, 1.1, -0.5 },
+            { 0.5, 1.1, 0.0 },
+            {-0.5, 1.1, 0.0 },
+            { 0.4, 0.8, 0.3 },
+            {-0.4, 0.8, 0.3 },
+            { 0.4, 0.8, -0.3 },
+            {-0.4, 0.8, -0.3 },
+            { 0.0, 0.7, 0.45},
+            { 0.0, 0.7, -0.45}
+    };
 
     public AuraVeraniegarListener(NetsuCosmetics plugin) {
         this.plugin = plugin;
@@ -39,27 +63,35 @@ public class AuraVeraniegarListener implements Listener {
 
     @EventHandler
     public void onMove(PlayerMoveEvent event) {
-        if (!event.hasChangedPosition()) return;
-        UUID uuid = event.getPlayer().getUniqueId();
-        lastMoved.put(uuid, System.currentTimeMillis());
-        lastEffectSlot.put(uuid, 0);
+        if (event.hasChangedPosition()) {
+            UUID uuid = event.getPlayer().getUniqueId();
+            lastMoved.put(uuid, System.currentTimeMillis());
+            lastEffectSlot.put(uuid, 0);
+        }
     }
 
     @EventHandler
     public void onFishDamage(EntityDamageEvent event) {
-        if (event.getEntity() instanceof TropicalFish fish && fish.isInvulnerable())
+        if (event.getEntity() instanceof TropicalFish fish && fish.isInvulnerable()) {
             event.setCancelled(true);
+        }
     }
 
     private void startMainTask() {
         new BukkitRunnable() {
             @Override
             public void run() {
-                if (getAuraData() == null) return;
+                CosmeticData data = getAuraData();
+                if (data == null) return;
+
                 long now = System.currentTimeMillis();
 
                 for (Player player : plugin.getServer().getOnlinePlayers()) {
-                    if (!chestplateHasCosmetico(player)) continue;
+                    if (chestplateHasCosmetico(player, data)) {
+                        spawnSpiralWaterEffect(player);
+                    }
+
+                    if (!chestplateHasCosmetico(player, data)) continue;
 
                     long quietoMs = now - lastMoved.getOrDefault(player.getUniqueId(), now);
                     if (quietoMs < 5000L) continue;
@@ -69,71 +101,116 @@ public class AuraVeraniegarListener implements Listener {
 
                     if (slot > lastSlot) {
                         lastEffectSlot.put(player.getUniqueId(), slot);
-                        if (slot % 2 == 0) spawnPezTropical(player);
+                        boolean conPez = (slot % 2 == 0);
+                        if (conPez) spawnPezTropical(player);
                     }
                 }
             }
-        }.runTaskTimer(plugin, 20L, 20L);
+        }.runTaskTimer(plugin, 1L, 1L);
+    }
+
+    private void spawnSpiralWaterEffect(Player player) {
+        UUID uuid = player.getUniqueId();
+        int ticks = spiralTicks.getOrDefault(uuid, 0);
+        spiralTicks.put(uuid, ticks + 1);
+
+        Location center = player.getLocation();
+        World world = player.getWorld();
+
+        int spiralPoints = 8;
+        double height = Math.sin(ticks * 0.1) * 0.8 + 1.0;
+        double baseRadius = 0.8;
+
+        for (int i = 0; i < spiralPoints; i++) {
+            double angleOffset = (i * (Math.PI * 2 / spiralPoints));
+            double currentAngle = angleOffset + (ticks * 0.15);
+
+            double radius = baseRadius + Math.sin(ticks * 0.05 + i) * 0.2;
+            
+            Location particleLoc = center.clone().add(
+                    Math.cos(currentAngle) * radius,
+                    height,
+                    Math.sin(currentAngle) * radius
+            );
+
+            world.spawnParticle(Particle.SPLASH, particleLoc, 1, 0.02, 0.02, 0.02, 0);
+            world.spawnParticle(Particle.BUBBLE_POP, particleLoc, 1, 0.02, 0.02, 0.02, 0);
+        }
+
+        double secondHeight = Math.sin(ticks * 0.1 + Math.PI) * 0.6 + 1.2;
+        for (int i = 0; i < 6; i++) {
+            double angle = (i * (Math.PI * 2 / 6)) + (ticks * 0.2);
+            double radius = 0.6 + Math.sin(ticks * 0.08 + i) * 0.15;
+            
+            Location particleLoc = center.clone().add(
+                    Math.cos(angle) * radius,
+                    secondHeight,
+                    Math.sin(angle) * radius
+            );
+
+            world.spawnParticle(Particle.FALLING_WATER, particleLoc, 1, 0.02, 0.02, 0.02, 0);
+        }
     }
 
     private void spawnPezTropical(Player player) {
         double angle = RNG.nextDouble() * Math.PI * 2;
-        double dist  = 1.0 + RNG.nextDouble();
+        double dist = 1.0 + RNG.nextDouble();
         Location loc = player.getLocation().add(
-            Math.cos(angle) * dist,
-            0.5 + RNG.nextDouble() * 0.5,
-            Math.sin(angle) * dist
+                Math.cos(angle) * dist,
+                0.5 + RNG.nextDouble() * 0.5,
+                Math.sin(angle) * dist
         );
 
-        fishCounter++;
-        boolean easterEgg = (fishCounter % 50 == 0);
+        int count = fishCounter.incrementAndGet();
+        boolean easterEgg = (count % 50 == 0);
 
         player.getWorld().spawn(loc, TropicalFish.class, entity -> {
             entity.setAI(true);
             entity.setGravity(true);
             entity.setSilent(true);
             entity.setInvulnerable(true);
-            entity.setPattern(PATTERNS[RNG.nextInt(PATTERNS.length)]);
-            entity.setBodyColor(DYE_COLORS[RNG.nextInt(DYE_COLORS.length)]);
-            entity.setPatternColor(DYE_COLORS[RNG.nextInt(DYE_COLORS.length)]);
+
+            TropicalFish.Pattern[] patterns = TropicalFish.Pattern.values();
+            entity.setPattern(patterns[RNG.nextInt(patterns.length)]);
+            entity.setBodyColor(randomDyeColor());
+            entity.setPatternColor(randomDyeColor());
 
             if (easterEgg) {
                 entity.customName(ColorUtil.toComponent("&7Plugin creado por &fWilly_Max"));
                 entity.setCustomNameVisible(true);
             }
 
+            TropicalFish fish = entity;
+
             new BukkitRunnable() {
                 @Override
                 public void run() {
-                    if (!entity.isDead()) {
-                        entity.getWorld().spawnParticle(Particle.SPLASH, entity.getLocation(), 5, 0.2, 0.1, 0.2, 0.05);
-                        entity.remove();
+                    if (!fish.isDead()) {
+                        fish.getWorld().spawnParticle(Particle.SPLASH, fish.getLocation(), 5, 0.2, 0.1, 0.2, 0.05);
+                        fish.remove();
                     }
                 }
             }.runTaskLater(plugin, 100L);
         });
     }
 
-    private boolean chestplateHasCosmetico(Player player) {
-        ItemStack chest = player.getInventory().getChestplate();
-        if (chest == null || chest.getType().isAir() || !chest.hasItemMeta()) return false;
-        if (cachedKey == null) {
-            CosmeticData d = getAuraData();
-            if (d == null) return false;
-            cachedKey = new NamespacedKey(plugin, "cosmetic_" + d.id);
-        }
-        return chest.getItemMeta().getPersistentDataContainer().has(cachedKey, PersistentDataType.BYTE);
+    private DyeColor randomDyeColor() {
+        DyeColor[] colors = DyeColor.values();
+        return colors[RNG.nextInt(colors.length)];
+    }
+
+    private boolean chestplateHasCosmetico(Player player, CosmeticData data) {
+        ItemStack chestplate = player.getInventory().getChestplate();
+        if (chestplate == null || chestplate.getType().isAir() || !chestplate.hasItemMeta()) return false;
+        
+        NamespacedKey key = new NamespacedKey(plugin, "cosmetic_" + data.id);
+        return chestplate.getItemMeta().getPersistentDataContainer().has(key, PersistentDataType.BYTE);
     }
 
     private CosmeticData getAuraData() {
-        if (cachedData == null) {
-            for (CosmeticData d : plugin.getCosmeticManager().getAll()) {
-                if (d.tipo.equalsIgnoreCase("AURA_VERANIEGA")) {
-                    cachedData = d;
-                    break;
-                }
-            }
+        for (CosmeticData d : plugin.getCosmeticManager().getAll()) {
+            if (d.tipo.equalsIgnoreCase("AURA_VERANIEGA")) return d;
         }
-        return cachedData;
+        return null;
     }
 }
