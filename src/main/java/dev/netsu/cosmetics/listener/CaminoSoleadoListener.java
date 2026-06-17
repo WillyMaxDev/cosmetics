@@ -23,28 +23,31 @@ import java.util.*;
 public class CaminoSoleadoListener implements Listener {
 
     private final NetsuCosmetics plugin;
+    private static final Random RNG = new Random();
 
-    private final Map<Location, BlockData> originalBlock = new HashMap<>();
-    private final Map<Location, BlockData> originalAbove = new HashMap<>();
+    private final Map<Location, BlockData> originalBlock  = new HashMap<>();
+    private final Map<Location, BlockData> originalAbove  = new HashMap<>();
     private final Map<Location, BlockData> originalAbove2 = new HashMap<>();
-    private final Map<Location, Long> blockTimestamps = new HashMap<>();
-    private final Set<Location> playerPlaced = new HashSet<>();
-    private final Map<UUID, Long> lastMoved = new HashMap<>();
-    private final Map<UUID, BukkitRunnable> spiralTasks = new HashMap<>();
-    private final Map<UUID, Double> particleIntensity = new HashMap<>();
+    private final Map<Location, Long>      blockTimestamps = new HashMap<>();
+    private final Set<Location>            playerPlaced   = new HashSet<>();
+    private final Map<UUID, Long>          lastMoved      = new HashMap<>();
+    private final Map<UUID, BukkitRunnable> spiralTasks   = new HashMap<>();
 
-    private static final Set<Material> BLOQUEADOS = new HashSet<>(Arrays.asList(
-            Material.BEDROCK, Material.WATER, Material.LAVA,
-            Material.AIR, Material.CAVE_AIR, Material.VOID_AIR,
-            Material.NETHER_PORTAL, Material.END_PORTAL, Material.END_GATEWAY,
-            Material.END_PORTAL_FRAME, Material.BARRIER
-    ));
+    private static final Set<Material> BLOQUEADOS = EnumSet.of(
+        Material.BEDROCK, Material.WATER, Material.LAVA,
+        Material.AIR, Material.CAVE_AIR, Material.VOID_AIR,
+        Material.NETHER_PORTAL, Material.END_PORTAL, Material.END_GATEWAY,
+        Material.END_PORTAL_FRAME, Material.BARRIER
+    );
 
-    private static final Set<Material> TALL_TOP = new HashSet<>(Arrays.asList(
-            Material.TALL_GRASS, Material.LARGE_FERN,
-            Material.SUNFLOWER, Material.LILAC, Material.ROSE_BUSH, Material.PEONY,
-            Material.PITCHER_PLANT, Material.TALL_SEAGRASS
-    ));
+    private static final Set<Material> TALL_TOP = EnumSet.of(
+        Material.TALL_GRASS, Material.LARGE_FERN,
+        Material.SUNFLOWER, Material.LILAC, Material.ROSE_BUSH, Material.PEONY,
+        Material.PITCHER_PLANT, Material.TALL_SEAGRASS
+    );
+
+    private CosmeticData cachedData = null;
+    private NamespacedKey cachedKey = null;
 
     public CaminoSoleadoListener(NetsuCosmetics plugin) {
         this.plugin = plugin;
@@ -55,19 +58,15 @@ public class CaminoSoleadoListener implements Listener {
         new BukkitRunnable() {
             @Override
             public void run() {
+                if (blockTimestamps.isEmpty()) return;
                 long now = System.currentTimeMillis();
-                List<Location> toRemove = new ArrayList<>();
-                
-                for (Map.Entry<Location, Long> entry : blockTimestamps.entrySet()) {
+                blockTimestamps.entrySet().removeIf(entry -> {
                     if (now - entry.getValue() >= 3000L) {
-                        toRemove.add(entry.getKey());
+                        restoreBlock(entry.getKey());
+                        return true;
                     }
-                }
-                
-                for (Location loc : toRemove) {
-                    restoreBlock(loc);
-                    blockTimestamps.remove(loc);
-                }
+                    return false;
+                });
             }
         }.runTaskTimer(plugin, 20L, 20L);
     }
@@ -75,21 +74,15 @@ public class CaminoSoleadoListener implements Listener {
     private void restoreBlock(Location loc) {
         BlockData above2 = originalAbove2.remove(loc);
         if (above2 != null) {
-            try {
-                loc.getBlock().getRelative(0, 2, 0).setBlockData(above2, false);
-            } catch (Exception ignored) {}
+            try { loc.getBlock().getRelative(0, 2, 0).setBlockData(above2, false); } catch (Exception ignored) {}
         }
         BlockData above = originalAbove.remove(loc);
         if (above != null) {
-            try {
-                loc.getBlock().getRelative(0, 1, 0).setBlockData(above, false);
-            } catch (Exception ignored) {}
+            try { loc.getBlock().getRelative(0, 1, 0).setBlockData(above, false); } catch (Exception ignored) {}
         }
         BlockData bd = originalBlock.remove(loc);
         if (bd != null) {
-            try {
-                loc.getBlock().setBlockData(bd, false);
-            } catch (Exception ignored) {}
+            try { loc.getBlock().setBlockData(bd, false); } catch (Exception ignored) {}
         }
         playerPlaced.remove(loc.clone().add(0, 1, 0));
     }
@@ -109,28 +102,25 @@ public class CaminoSoleadoListener implements Listener {
 
     @EventHandler
     public void onMove(PlayerMoveEvent event) {
+        if (!event.hasChangedBlock()) return;
         Player player = event.getPlayer();
         CosmeticData data = getCaminoSoleadoData();
         if (data == null) return;
-        if (!bootsHaveCosmetico(player.getInventory().getBoots(), data)) return;
+        if (!bootsHaveCosmetico(player.getInventory().getBoots())) return;
 
         long now = System.currentTimeMillis();
-        Location center = player.getLocation().getBlock().getLocation();
 
         if (GroundLandListener.shouldForceRestore(player, plugin)) {
-            List<Location> toRestore = new ArrayList<>(originalBlock.keySet());
-            for (Location loc : toRestore) restoreBlock(loc);
+            new ArrayList<>(originalBlock.keySet()).forEach(this::restoreBlock);
             originalBlock.clear();
             blockTimestamps.clear();
             cancelSpiral(player.getUniqueId());
             return;
         }
 
-        if (event.hasChangedBlock()) {
-            lastMoved.put(player.getUniqueId(), now);
-            cancelSpiral(player.getUniqueId());
-            applyBlocks(player, data, now);
-        }
+        lastMoved.put(player.getUniqueId(), now);
+        cancelSpiral(player.getUniqueId());
+        applyBlocks(player, data, now);
     }
 
     private void applyBlocks(Player player, CosmeticData data, long now) {
@@ -149,7 +139,7 @@ public class CaminoSoleadoListener implements Listener {
         int pCantidad = cfg.getInt("particulas.cantidad", 5);
 
         Location center = player.getLocation().getBlock().getLocation();
-        Random random = new Random();
+        World world = player.getWorld();
 
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
@@ -160,8 +150,8 @@ public class CaminoSoleadoListener implements Listener {
                 if (!canReplace(under)) continue;
                 if (!WorldGuardHelper.canBuild(player, loc)) continue;
 
-                Material replacement = bloques.get(random.nextInt(bloques.size()));
-                BlockData newBd = Bukkit.createBlockData(replacement);
+                Material replacement = bloques.get(RNG.nextInt(bloques.size()));
+                BlockData newBd = replacement.createBlockData();
                 originalBlock.put(loc, under.getBlockData());
                 blockTimestamps.put(loc, now);
 
@@ -182,47 +172,14 @@ public class CaminoSoleadoListener implements Listener {
                     Location spawnLoc = loc.clone().add(0.5, 1.0, 0.5);
                     try {
                         if (particula == Particle.FALLING_DUST || particula == Particle.BLOCK) {
-                            player.getWorld().spawnParticle(particula, spawnLoc, pCantidad, 0.3, 0.05, 0.3, 0, newBd);
+                            world.spawnParticle(particula, spawnLoc, pCantidad, 0.3, 0.05, 0.3, 0, newBd);
                         } else {
-                            player.getWorld().spawnParticle(particula, spawnLoc, pCantidad, 0.3, 0.05, 0.3);
+                            world.spawnParticle(particula, spawnLoc, pCantidad, 0.3, 0.05, 0.3);
                         }
                     } catch (Exception ignored) {}
                 }
             }
         }
-    }
-
-    private void startSpiral(Player player) {
-        BlockData sandData = Bukkit.createBlockData(Material.SAND);
-        BukkitRunnable task = new BukkitRunnable() {
-            double angle = 0;
-            double height = 2.0;
-            boolean goingDown = true;
-
-            @Override
-            public void run() {
-                if (!player.isOnline()) { cancel(); spiralTasks.remove(player.getUniqueId()); return; }
-                CosmeticData d = getCaminoSoleadoData();
-                if (d == null || !bootsHaveCosmetico(player.getInventory().getBoots(), d)) {
-                    cancel(); spiralTasks.remove(player.getUniqueId()); return;
-                }
-                Location base = player.getLocation();
-                for (int i = 0; i < 3; i++) {
-                    double a = angle + Math.toRadians(i * 120);
-                    Location loc = base.clone().add(Math.cos(a) * 0.6, height, Math.sin(a) * 0.6);
-                    
-                    if (!isBlockColliding(loc)) {
-                        try { player.getWorld().spawnParticle(Particle.BLOCK, loc, 1, 0, 0, 0, 0, sandData); } catch (Exception ignored) {}
-                    }
-                }
-                angle += Math.toRadians(18);
-                height = goingDown ? height - 0.08 : height + 0.08;
-                if (height <= 0.1) goingDown = false;
-                else if (height >= 2.0) goingDown = true;
-            }
-        };
-        spiralTasks.put(player.getUniqueId(), task);
-        task.runTaskTimer(plugin, 0L, 1L);
     }
 
     private void cancelSpiral(UUID uuid) {
@@ -232,27 +189,30 @@ public class CaminoSoleadoListener implements Listener {
 
     private boolean canReplace(Block block) {
         Material mat = block.getType();
-        if (BLOQUEADOS.contains(mat)) return false;
+        if (!mat.isSolid() || BLOQUEADOS.contains(mat)) return false;
         String name = mat.name();
-        if (name.contains("PORTAL") || name.contains("GATEWAY")) return false;
-        return mat.isSolid();
+        return !name.contains("PORTAL") && !name.contains("GATEWAY");
     }
 
-    private boolean isBlockColliding(Location loc) {
-        Block block = loc.getBlock();
-        return block.getType().isSolid();
-    }
-
-    private boolean bootsHaveCosmetico(ItemStack boots, CosmeticData data) {
+    private boolean bootsHaveCosmetico(ItemStack boots) {
         if (boots == null || boots.getType().isAir() || !boots.hasItemMeta()) return false;
-        NamespacedKey key = new NamespacedKey(plugin, "cosmetic_" + data.id);
-        return boots.getItemMeta().getPersistentDataContainer().has(key, PersistentDataType.BYTE);
+        if (cachedKey == null) {
+            CosmeticData d = getCaminoSoleadoData();
+            if (d == null) return false;
+            cachedKey = new NamespacedKey(plugin, "cosmetic_" + d.id);
+        }
+        return boots.getItemMeta().getPersistentDataContainer().has(cachedKey, PersistentDataType.BYTE);
     }
 
     private CosmeticData getCaminoSoleadoData() {
-        for (CosmeticData d : plugin.getCosmeticManager().getAll()) {
-            if (d.tipo.equalsIgnoreCase("CAMINO_SOLEADO")) return d;
+        if (cachedData == null) {
+            for (CosmeticData d : plugin.getCosmeticManager().getAll()) {
+                if (d.tipo.equalsIgnoreCase("CAMINO_SOLEADO")) {
+                    cachedData = d;
+                    break;
+                }
+            }
         }
-        return null;
+        return cachedData;
     }
 }
