@@ -25,15 +25,15 @@ public class EstelarSolarListener implements Listener {
     private final NetsuCosmetics plugin;
     private static final Random RNG = new Random();
 
-    private static final double TWO_PI = 2 * Math.PI;
+    private static final double TWO_PI       = 2 * Math.PI;
     private static final double SPIRAL_SPEED = 1.0 / 40.0;
-    private static final int SPIRAL_POINTS = 8;
+    private static final int    SPIRAL_POINTS = 8;
     private static final double SPIRAL_RADIUS = 0.25;
-    private static final double SPIRAL_STEP = TWO_PI / SPIRAL_POINTS;
-    private static final long TAIL_INTERVAL_MS = 3000L;
-    private static final long BLOCK_RESTORE_MS = 3000L;
-    private static final int BLOCKS_MIN = 6;
-    private static final int BLOCKS_EXTRA = 5;
+    private static final double SPIRAL_STEP   = TWO_PI / SPIRAL_POINTS;
+    private static final long   TAIL_INTERVAL_MS  = 3000L;
+    private static final long   BLOCK_RESTORE_MS  = 3000L;
+    private static final int    BLOCKS_MIN   = 6;
+    private static final int    BLOCKS_EXTRA = 5;
 
     private static final Material[] BLOQUES_SOLAR = {
         Material.SAND, Material.SANDSTONE,
@@ -54,26 +54,30 @@ public class EstelarSolarListener implements Listener {
     );
 
     private static final class ArrowData {
+        final Arrow arrow;
         long lastTailMs;
-        ArrowData(long now) { this.lastTailMs = now; }
+        ArrowData(Arrow arrow, long now) {
+            this.arrow = arrow;
+            this.lastTailMs = now;
+        }
     }
 
     private final Map<UUID, ArrowData> trackedArrows = new HashMap<>();
 
-    private final Map<Location, BlockData> originalBlock = new HashMap<>();
-    private final Map<Location, BlockData> originalAbove = new HashMap<>();
+    private final Map<Location, BlockData> originalBlock  = new HashMap<>();
+    private final Map<Location, BlockData> originalAbove  = new HashMap<>();
     private final Map<Location, BlockData> originalAbove2 = new HashMap<>();
-    private final Map<Location, Long> blockTimestamps = new HashMap<>();
-    private final Set<Location> protectedBlocks = new HashSet<>();
+    private final Map<Location, Long>      blockTimestamps = new HashMap<>();
+    private final Set<Location>            protectedBlocks = new HashSet<>();
 
     private CosmeticData cachedData = null;
     private final NamespacedKey cosmeticKey;
 
-    private final Vector reuseVel = new Vector();
-    private final Vector reusePerp1 = new Vector();
-    private final Vector reusePerp2 = new Vector();
-    private final Vector reuseOffset = new Vector();
-    private final Location reuseLoc = new Location(null, 0, 0, 0);
+    private final Vector   reuseVel    = new Vector();
+    private final Vector   reusePerp1  = new Vector();
+    private final Vector   reusePerp2  = new Vector();
+    private final Vector   reuseOffset = new Vector();
+    private final Location reuseLoc    = new Location(null, 0, 0, 0);
 
     public EstelarSolarListener(NetsuCosmetics plugin) {
         this.plugin = plugin;
@@ -85,20 +89,21 @@ public class EstelarSolarListener implements Listener {
     @EventHandler
     public void onProjectileLaunch(ProjectileLaunchEvent event) {
         Projectile proj = event.getEntity();
-        if (!(proj instanceof Arrow)) return;
+        if (!(proj instanceof Arrow arrow)) return;
         if (!(proj.getShooter() instanceof Player player)) return;
         if (!playerHasCosmetic(player)) return;
-        trackedArrows.put(proj.getUniqueId(), new ArrowData(System.currentTimeMillis()));
+        trackedArrows.put(arrow.getUniqueId(), new ArrowData(arrow, System.currentTimeMillis()));
     }
 
     @EventHandler
     public void onProjectileHit(ProjectileHitEvent event) {
         Projectile proj = event.getEntity();
         if (!(proj instanceof Arrow)) return;
-        if (trackedArrows.remove(proj.getUniqueId()) == null) return;
+        ArrowData removed = trackedArrows.remove(proj.getUniqueId());
+        if (removed == null) return;
 
         Entity hitEntity = event.getHitEntity();
-        Block hitBlock = event.getHitBlock();
+        Block  hitBlock  = event.getHitBlock();
 
         if (hitEntity instanceof LivingEntity living) {
             applyBlocksAroundEntity(living);
@@ -110,9 +115,8 @@ public class EstelarSolarListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onBlockBreak(BlockBreakEvent event) {
-        if (protectedBlocks.contains(event.getBlock().getLocation())) {
+        if (protectedBlocks.contains(event.getBlock().getLocation()))
             event.setCancelled(true);
-        }
     }
 
     private void startSpiralTask() {
@@ -124,19 +128,18 @@ public class EstelarSolarListener implements Listener {
                 long now = System.currentTimeMillis();
                 double rotation = (now * SPIRAL_SPEED) % TWO_PI;
 
-                Iterator<Map.Entry<UUID, ArrowData>> it = trackedArrows.entrySet().iterator();
+                Iterator<ArrowData> it = trackedArrows.values().iterator();
                 while (it.hasNext()) {
-                    Map.Entry<UUID, ArrowData> entry = it.next();
-                    Entity entity = plugin.getServer().getEntity(entry.getKey());
+                    ArrowData data = it.next();
+                    Arrow arrow = data.arrow;
 
-                    if (!(entity instanceof Arrow arrow) || arrow.isDead() || arrow.isOnGround()) {
+                    if (arrow.isDead() || arrow.isOnGround()) {
                         it.remove();
                         continue;
                     }
 
                     spawnSpiralAroundArrow(arrow, rotation);
 
-                    ArrowData data = entry.getValue();
                     if (now - data.lastTailMs >= TAIL_INTERVAL_MS) {
                         data.lastTailMs = now;
                         spawnTailBurst(arrow);
@@ -178,7 +181,7 @@ public class EstelarSolarListener implements Listener {
     private void spawnTailBurst(Arrow arrow) {
         Location loc = arrow.getLocation();
         World world = loc.getWorld();
-        world.spawnParticle(Particle.FLAME, loc, 6, 0.05, 0.05, 0.05, 0.01);
+        world.spawnParticle(Particle.FLAME,   loc, 6, 0.05, 0.05, 0.05, 0.01);
         world.spawnParticle(Particle.END_ROD, loc, 3, 0.08, 0.08, 0.08, 0.005);
 
         new BukkitRunnable() {
@@ -197,7 +200,9 @@ public class EstelarSolarListener implements Listener {
 
     private void applyBlocksAroundEntity(LivingEntity entity) {
         Location entityLoc = entity.getLocation();
-        Location surfaceCenter = findSurfaceBelow(entityLoc);
+        Location surfaceCenter = findSurfaceBelowXZ(
+            entityLoc.getWorld(), entityLoc.getBlockX(), entityLoc.getBlockZ(), entityLoc.getBlockY()
+        );
         if (surfaceCenter == null) return;
 
         double heightAboveSurface = entityLoc.getY() - (surfaceCenter.getY() + 1.0);
@@ -209,12 +214,13 @@ public class EstelarSolarListener implements Listener {
         List<Location> candidates = new ArrayList<>(24);
         int ex = entityLoc.getBlockX();
         int ez = entityLoc.getBlockZ();
+        int ey = entityLoc.getBlockY();
         World world = entityLoc.getWorld();
 
         for (int dx = -2; dx <= 2; dx++) {
             for (int dz = -2; dz <= 2; dz++) {
                 if (dx == 0 && dz == 0) continue;
-                Location surfLoc = findSurfaceBelowXZ(world, ex + dx, ez + dz, entityLoc.getBlockY());
+                Location surfLoc = findSurfaceBelowXZ(world, ex + dx, ez + dz, ey);
                 if (surfLoc != null) candidates.add(surfLoc);
             }
         }
@@ -222,11 +228,8 @@ public class EstelarSolarListener implements Listener {
 
         List<Location> toChange = new ArrayList<>(totalTarget);
         toChange.add(surfaceCenter);
-        int added = 1;
-        for (int i = 0; i < candidates.size() && added < totalTarget; i++) {
+        for (int i = 0; i < candidates.size() && toChange.size() < totalTarget; i++)
             toChange.add(candidates.get(i));
-            added++;
-        }
 
         for (Location loc : toChange) {
             Block under = loc.getBlock();
@@ -253,12 +256,10 @@ public class EstelarSolarListener implements Listener {
             }
 
             under.setBlockData(newBd, false);
-            world.spawnParticle(Particle.BLOCK, loc.getX() + 0.5, loc.getY() + 1.0, loc.getZ() + 0.5, 6, 0.3, 0.05, 0.3, 0, newBd);
+            world.spawnParticle(Particle.BLOCK,
+                loc.getX() + 0.5, loc.getY() + 1.0, loc.getZ() + 0.5,
+                6, 0.3, 0.05, 0.3, 0, newBd);
         }
-    }
-
-    private Location findSurfaceBelow(Location loc) {
-        return findSurfaceBelowXZ(loc.getWorld(), loc.getBlockX(), loc.getBlockZ(), loc.getBlockY());
     }
 
     private Location findSurfaceBelowXZ(World world, int x, int z, int startY) {
@@ -266,16 +267,15 @@ public class EstelarSolarListener implements Listener {
         int minY = world.getMinHeight();
         for (int y = startY; y >= minY; y--) {
             Material mat = world.getBlockAt(x, y, z).getType();
-            if (mat.isSolid() && !BLOQUEADOS.contains(mat)) {
+            if (mat.isSolid() && !BLOQUEADOS.contains(mat))
                 return new Location(world, x, y, z);
-            }
         }
         return null;
     }
 
     private void spawnImpactParticles(World world, Location loc) {
         world.spawnParticle(Particle.END_ROD, loc, 12, 0.3, 0.3, 0.3, 0.05);
-        world.spawnParticle(Particle.FLAME, loc, 8, 0.2, 0.2, 0.2, 0.03);
+        world.spawnParticle(Particle.FLAME,   loc,  8, 0.2, 0.2, 0.2, 0.03);
     }
 
     private void startRestoreTask() {
@@ -308,15 +308,13 @@ public class EstelarSolarListener implements Listener {
 
     private boolean canReplace(Block block) {
         Material mat = block.getType();
-        if (!mat.isSolid()) return false;
-        if (BLOQUEADOS.contains(mat)) return false;
+        if (!mat.isSolid() || BLOQUEADOS.contains(mat)) return false;
         String name = mat.name();
         return !name.contains("PORTAL") && !name.contains("GATEWAY");
     }
 
     private boolean playerHasCosmetic(Player player) {
-        CosmeticData data = getCachedData();
-        if (data == null) return false;
+        if (getCachedData() == null) return false;
         ItemStack main = player.getInventory().getItemInMainHand();
         if (isBowOrCrossbow(main) && itemHasCosmetico(main)) return true;
         ItemStack off = player.getInventory().getItemInOffHand();
