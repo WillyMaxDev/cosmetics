@@ -5,7 +5,8 @@ import dev.netsu.cosmetics.cosmetic.CosmeticData;
 import dev.netsu.cosmetics.util.WorldGuardHelper;
 import org.bukkit.*;
 import org.bukkit.block.Block;
-import org.bukkit.block.TileState;
+import org.bukkit.block.BlockState;
+import org.bukkit.block.Container;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
@@ -33,9 +34,9 @@ public class CaminoSoleadoListener implements Listener {
     private final NetsuCosmetics plugin;
     private static final Random RNG = new Random();
 
-    private final Map<Location, BlockData>   originalBlock     = new HashMap<>();
-    private final Map<Location, BlockData>   originalAbove     = new HashMap<>();
-    private final Map<Location, BlockData>   originalAbove2    = new HashMap<>();
+    private final Map<Location, BlockState>  originalBlock     = new HashMap<>();
+    private final Map<Location, BlockState>  originalAbove     = new HashMap<>();
+    private final Map<Location, BlockState>  originalAbove2    = new HashMap<>();
     private final Map<Location, Long>        blockTimestamps   = new HashMap<>();
     private final Set<Location>              playerPlaced      = new HashSet<>();
     private final Map<UUID, Long>            lastMoved         = new HashMap<>();
@@ -80,19 +81,17 @@ public class CaminoSoleadoListener implements Listener {
     }
 
     private void restoreBlock(Location loc) {
-        BlockData above2 = originalAbove2.remove(loc);
+        BlockState above2 = originalAbove2.remove(loc);
         if (above2 != null) {
-            try { loc.getBlock().getRelative(0, 2, 0).setBlockData(above2, false); } catch (Exception ignored) {}
+            try { above2.update(true, false); } catch (Exception ignored) {}
         }
-        BlockData above = originalAbove.remove(loc);
+        BlockState above = originalAbove.remove(loc);
         if (above != null) {
-            try { loc.getBlock().getRelative(0, 1, 0).setBlockData(above, false); } catch (Exception ignored) {}
+            try { above.update(true, false); } catch (Exception ignored) {}
         }
-        BlockData bd = originalBlock.remove(loc);
-        if (bd != null) {
-            try {
-                loc.getBlock().setBlockData(bd, false);
-            } catch (Exception ignored) {}
+        BlockState state = originalBlock.remove(loc);
+        if (state != null) {
+            try { state.update(true, false); } catch (Exception ignored) {}
         }
         playerPlaced.remove(loc.clone().add(0, 1, 0));
     }
@@ -218,15 +217,27 @@ public class CaminoSoleadoListener implements Listener {
                 Material replacement = bloques.get(RNG.nextInt(bloques.size()));
                 BlockData newBd = replacement.createBlockData();
 
-                originalBlock.put(loc, under.getBlockData());
+                BlockState savedState = under.getState();
+
+                if (savedState instanceof Container) {
+                    BlockState clearState = under.getState();
+                    if (clearState instanceof org.bukkit.block.Chest) {
+                        ((org.bukkit.block.Chest) clearState).getBlockInventory().clear();
+                    } else {
+                        ((Container) clearState).getInventory().clear();
+                    }
+                    clearState.update(true, false);
+                }
+
+                originalBlock.put(loc, savedState);
                 blockTimestamps.put(loc, now);
 
                 Block above1 = under.getRelative(0, 1, 0);
                 if (!above1.getType().isAir() && !above1.getType().isSolid()) {
-                    originalAbove.put(loc, above1.getBlockData());
+                    originalAbove.put(loc, above1.getState());
                     Block above2 = under.getRelative(0, 2, 0);
                     if (TALL_TOP.contains(above2.getType())) {
-                        originalAbove2.put(loc, above2.getBlockData());
+                        originalAbove2.put(loc, above2.getState());
                         above2.setType(Material.AIR, false);
                     }
                     above1.setType(Material.AIR, false);
@@ -256,7 +267,6 @@ public class CaminoSoleadoListener implements Listener {
     private boolean canReplace(Block block) {
         Material mat = block.getType();
         if (!mat.isSolid() || BLOQUEADOS.contains(mat)) return false;
-        if (block.getState() instanceof TileState) return false;
         String name = mat.name();
         return !name.contains("PORTAL") && !name.contains("GATEWAY") && !name.contains("BED");
     }
