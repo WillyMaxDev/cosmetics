@@ -5,6 +5,8 @@ import dev.netsu.cosmetics.cosmetic.CosmeticData;
 import dev.netsu.cosmetics.util.WorldGuardHelper;
 import org.bukkit.*;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
+import org.bukkit.block.Container;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
@@ -25,13 +27,14 @@ public class CaminoSoleadoListener implements Listener {
     private final NetsuCosmetics plugin;
     private static final Random RNG = new Random();
 
-    private final Map<Location, BlockData> originalBlock  = new HashMap<>();
-    private final Map<Location, BlockData> originalAbove  = new HashMap<>();
-    private final Map<Location, BlockData> originalAbove2 = new HashMap<>();
-    private final Map<Location, Long>      blockTimestamps = new HashMap<>();
-    private final Set<Location>            playerPlaced   = new HashSet<>();
-    private final Map<UUID, Long>          lastMoved      = new HashMap<>();
-    private final Map<UUID, BukkitRunnable> spiralTasks   = new HashMap<>();
+    private final Map<Location, BlockData>   originalBlock     = new HashMap<>();
+    private final Map<Location, BlockData>   originalAbove     = new HashMap<>();
+    private final Map<Location, BlockData>   originalAbove2    = new HashMap<>();
+    private final Map<Location, Long>        blockTimestamps   = new HashMap<>();
+    private final Map<Location, ItemStack[]> containerContents = new HashMap<>();
+    private final Set<Location>              playerPlaced      = new HashSet<>();
+    private final Map<UUID, Long>            lastMoved         = new HashMap<>();
+    private final Map<UUID, BukkitRunnable>  spiralTasks       = new HashMap<>();
 
     private static final Set<Material> BLOQUEADOS = EnumSet.of(
         Material.BEDROCK, Material.WATER, Material.LAVA,
@@ -46,8 +49,8 @@ public class CaminoSoleadoListener implements Listener {
         Material.PITCHER_PLANT, Material.TALL_SEAGRASS
     );
 
-    private CosmeticData cachedData = null;
-    private NamespacedKey cachedKey = null;
+    private CosmeticData  cachedData = null;
+    private NamespacedKey cachedKey  = null;
 
     public CaminoSoleadoListener(NetsuCosmetics plugin) {
         this.plugin = plugin;
@@ -82,7 +85,18 @@ public class CaminoSoleadoListener implements Listener {
         }
         BlockData bd = originalBlock.remove(loc);
         if (bd != null) {
-            try { loc.getBlock().setBlockData(bd, false); } catch (Exception ignored) {}
+            try {
+                loc.getBlock().setBlockData(bd, false);
+                ItemStack[] contents = containerContents.remove(loc);
+                if (contents != null) {
+                    BlockState state = loc.getBlock().getState();
+                    if (state instanceof Container) {
+                        ((Container) state).getInventory().setContents(contents);
+                    }
+                }
+            } catch (Exception ignored) {}
+        } else {
+            containerContents.remove(loc);
         }
         playerPlaced.remove(loc.clone().add(0, 1, 0));
     }
@@ -152,6 +166,12 @@ public class CaminoSoleadoListener implements Listener {
 
                 Material replacement = bloques.get(RNG.nextInt(bloques.size()));
                 BlockData newBd = replacement.createBlockData();
+
+                BlockState bs = under.getState();
+                if (bs instanceof Container) {
+                    containerContents.put(loc, ((Container) bs).getInventory().getContents().clone());
+                }
+
                 originalBlock.put(loc, under.getBlockData());
                 blockTimestamps.put(loc, now);
 
