@@ -5,8 +5,7 @@ import dev.netsu.cosmetics.cosmetic.CosmeticData;
 import dev.netsu.cosmetics.util.WorldGuardHelper;
 import org.bukkit.*;
 import org.bukkit.block.Block;
-import org.bukkit.block.BlockState;
-import org.bukkit.block.Container;
+import org.bukkit.block.TileState;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
@@ -14,7 +13,14 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockFadeEvent;
+import org.bukkit.event.block.BlockPhysicsEvent;
+import org.bukkit.event.block.BlockPistonExtendEvent;
+import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityChangeBlockEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
@@ -31,7 +37,6 @@ public class CaminoSoleadoListener implements Listener {
     private final Map<Location, BlockData>   originalAbove     = new HashMap<>();
     private final Map<Location, BlockData>   originalAbove2    = new HashMap<>();
     private final Map<Location, Long>        blockTimestamps   = new HashMap<>();
-    private final Map<Location, ItemStack[]> containerContents = new HashMap<>();
     private final Set<Location>              playerPlaced      = new HashSet<>();
     private final Map<UUID, Long>            lastMoved         = new HashMap<>();
     private final Map<UUID, BukkitRunnable>  spiralTasks       = new HashMap<>();
@@ -40,7 +45,7 @@ public class CaminoSoleadoListener implements Listener {
         Material.BEDROCK, Material.WATER, Material.LAVA,
         Material.AIR, Material.CAVE_AIR, Material.VOID_AIR,
         Material.NETHER_PORTAL, Material.END_PORTAL, Material.END_GATEWAY,
-        Material.END_PORTAL_FRAME, Material.BARRIER
+        Material.END_PORTAL_FRAME, Material.BARRIER, Material.OBSIDIAN
     );
 
     private static final Set<Material> TALL_TOP = EnumSet.of(
@@ -87,31 +92,77 @@ public class CaminoSoleadoListener implements Listener {
         if (bd != null) {
             try {
                 loc.getBlock().setBlockData(bd, false);
-                ItemStack[] contents = containerContents.remove(loc);
-                if (contents != null) {
-                    BlockState state = loc.getBlock().getState();
-                    if (state instanceof Container) {
-                        ((Container) state).getInventory().setContents(contents);
-                    }
-                }
             } catch (Exception ignored) {}
-        } else {
-            containerContents.remove(loc);
         }
         playerPlaced.remove(loc.clone().add(0, 1, 0));
     }
 
-    @EventHandler(priority = EventPriority.HIGH)
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         Location loc = event.getBlock().getLocation();
-        if (originalBlock.containsKey(loc)) { event.setCancelled(true); return; }
-        if (originalAbove.containsKey(loc.clone().add(0, -1, 0))) event.setCancelled(true);
+        if (originalBlock.containsKey(loc) || originalAbove.containsKey(loc.clone().add(0, -1, 0))) {
+            event.setCancelled(true);
+        }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
         Location above = event.getBlock().getLocation();
-        if (originalBlock.containsKey(above.clone().add(0, -1, 0))) playerPlaced.add(above);
+        if (originalBlock.containsKey(above.clone().add(0, -1, 0))) {
+            playerPlaced.add(above);
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBlockPhysics(BlockPhysicsEvent event) {
+        if (originalBlock.containsKey(event.getBlock().getLocation())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPistonExtend(BlockPistonExtendEvent event) {
+        for (Block b : event.getBlocks()) {
+            if (originalBlock.containsKey(b.getLocation()) || originalAbove.containsKey(b.getLocation())) {
+                event.setCancelled(true);
+                return;
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPistonRetract(BlockPistonRetractEvent event) {
+        for (Block b : event.getBlocks()) {
+            if (originalBlock.containsKey(b.getLocation()) || originalAbove.containsKey(b.getLocation())) {
+                event.setCancelled(true);
+                return;
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onEntityExplode(EntityExplodeEvent event) {
+        event.blockList().removeIf(b -> originalBlock.containsKey(b.getLocation()) || originalAbove.containsKey(b.getLocation()));
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBlockExplode(BlockExplodeEvent event) {
+        event.blockList().removeIf(b -> originalBlock.containsKey(b.getLocation()) || originalAbove.containsKey(b.getLocation()));
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onEntityChangeBlock(EntityChangeBlockEvent event) {
+        if (originalBlock.containsKey(event.getBlock().getLocation()) || originalAbove.containsKey(event.getBlock().getLocation())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBlockFade(BlockFadeEvent event) {
+        if (originalBlock.containsKey(event.getBlock().getLocation())) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler
@@ -167,11 +218,6 @@ public class CaminoSoleadoListener implements Listener {
                 Material replacement = bloques.get(RNG.nextInt(bloques.size()));
                 BlockData newBd = replacement.createBlockData();
 
-                BlockState bs = under.getState();
-                if (bs instanceof Container) {
-                    containerContents.put(loc, ((Container) bs).getInventory().getContents().clone());
-                }
-
                 originalBlock.put(loc, under.getBlockData());
                 blockTimestamps.put(loc, now);
 
@@ -210,8 +256,9 @@ public class CaminoSoleadoListener implements Listener {
     private boolean canReplace(Block block) {
         Material mat = block.getType();
         if (!mat.isSolid() || BLOQUEADOS.contains(mat)) return false;
+        if (block.getState() instanceof TileState) return false;
         String name = mat.name();
-        return !name.contains("PORTAL") && !name.contains("GATEWAY");
+        return !name.contains("PORTAL") && !name.contains("GATEWAY") && !name.contains("BED");
     }
 
     private boolean bootsHaveCosmetico(ItemStack boots) {
